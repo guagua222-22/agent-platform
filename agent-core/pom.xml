@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.agentplatform</groupId>
+        <artifactId>agent-platform</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>agent-core</artifactId>
+    <name>agent-core</name>
+    <description>Harness 与 Runtime 的共享契约：Agent 定义、工具接口、事件与运行状态</description>
+
+    <dependencies>
+        <!--
+            core 刻意保持零第三方依赖：它是两个子系统的契约层，
+            一旦引入框架依赖，Harness/Runtime 就被迫绑定该框架，无法独立演进。
+        -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

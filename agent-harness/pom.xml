@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.agentplatform</groupId>
+        <artifactId>agent-platform</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>agent-harness</artifactId>
+    <name>agent-harness</name>
+    <description>构建层：Prompt 模板、工具注册、Loop 策略、评测体系</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.agentplatform</groupId>
+            <artifactId>agent-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!--
+            Harness 的评测需要真实执行 Agent，因此依赖 Runtime。
+            依赖方向 core <- runtime <- harness 是单向的，runtime 不反向依赖 harness，
+            避免"构建层"与"执行层"互相耦合。
+        -->
+        <dependency>
+            <groupId>com.agentplatform</groupId>
+            <artifactId>agent-runtime</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!--
+            Loop 策略需要用 Spring AI 的 ToolCallingChatModel 调模型。
+            为什么用抽象接口而不是具体模型类：Loop 只依赖"能带工具调用的模型"这一能力，
+            具体是 DeepSeek、通义还是 Mock 由装配层决定，评测才能零成本注入假模型。
+            （Spring AI 1.1 起核心接口模块为 spring-ai-model，替代原 spring-ai-core）
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

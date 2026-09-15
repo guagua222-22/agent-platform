@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.16</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.agentplatform</groupId>
+    <artifactId>agent-platform</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>agent-platform</name>
+    <description>AI Agent 平台：Agent Harness（构建层）+ Agent Runtime（执行层）</description>
+
+    <!--
+        模块划分的"为什么"：
+        agent-core      —— Harness 与 Runtime 之间的契约（Agent 定义、工具接口、事件、状态），
+                           两个子系统都依赖它，但它不依赖任何一方，避免循环依赖；
+        agent-runtime   —— 执行层基础设施：跑 Agent、管状态、发事件（M1 起加持久化/断点/限流）；
+        agent-harness   —— 构建层：Prompt 模板、工具注册、Loop 策略、评测体系（依赖 Runtime 跑评测）；
+        agent-app       —— Spring Boot 壳 + REST/SSE API + 示例 Agent 装配，唯一可部署进程。
+    -->
+    <modules>
+        <module>agent-core</module>
+        <module>agent-runtime</module>
+        <module>agent-harness</module>
+        <module>agent-app</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <spring-ai.version>1.1.8</spring-ai.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring AI BOM 统一管理模型适配层版本，避免子模块各自引版本打架 -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!--
+                    integration 标记的测试是真调 DeepSeek 的集成测试（花钱、需要网络和 KEY），
+                    默认 mvn test 跳过它们；本地 mock 单测始终全量跑，保证 CI 零成本回归。
+                    跑法：mvn test -DexcludedGroups=
+                -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <excludedGroups>integration</excludedGroups>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

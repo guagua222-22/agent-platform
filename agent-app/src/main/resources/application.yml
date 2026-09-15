@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: agent-platform
+  ai:
+    deepseek:
+      # API Key 一律走环境变量：密钥进配置文件/进 git 是生产事故级错误
+      api-key: ${DEEPSEEK_API_KEY}
+      chat:
+        options:
+          # deepseek-chat = DeepSeek V3 对话模型（deepseek-reasoner 是推理模型，M2 再引入按需路由）
+          model: deepseek-chat
+          # 温度 0.3：任务型 Agent 需要稳定而非发散，温度过高会让工具调用格式漂移
+          temperature: 0.3
+          max-tokens: 2000
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
