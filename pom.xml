@@ -69,4 +69,25 @@
             </plugins>
         </pluginManagement>
     </build>
+    <profiles>
+        <!--
+            integration profile：显式开启真模型集成测试（花钱、要 KEY、要网络）。
+            默认 build 排除 @Tag("integration")，日常回归零成本；
+            跑法：./mvnw test -Pintegration
+        -->
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <excludedGroups combine.self="override"/>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -28,8 +28,9 @@ public class AgentConfig {
 
     @Bean
     public ReActLoop reActLoop(ChatModel model) {
-        // model 是 DeepSeek 适配器自动装配的 bean；ReActLoop 只依赖抽象接口，
-        // 换模型供应商（通义/Ollama/Mock）时此处注入不同的 bean 即可，Loop 零改动
+        // model 是 OpenAI 兼容适配器自动装配的 bean（当前指向千问 DashScope 端点）；
+        // ReActLoop 只依赖抽象接口，换供应商（DeepSeek/通义/Ollama/Mock）时
+        // 此处注入不同的 bean 或改 yml 的 base-url 即可，Loop 零改动
         return new ReActLoop(model);
     }
 

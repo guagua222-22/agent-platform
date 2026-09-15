@@ -15,11 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Hello Agent 集成测试：真调 DeepSeek 验证"Harness 组装的 Agent 能在 Runtime 上正确运行"。
+ * Hello Agent 集成测试：真调千问（DashScope OpenAI 兼容端点）验证
+ * "Harness 组装的 Agent 能在 Runtime 上正确运行"。
  *
  * 为什么标记 @Tag("integration") 并被默认排除：
- * 它花钱、依赖网络与 DEEPSEEK_API_KEY，必须与零成本的 mock 单测分开执行；
- * 跑法：export DEEPSEEK_API_KEY=sk-xxx && ./mvnw test -DexcludedGroups=
+ * 它花钱、依赖网络与 AI_API_KEY，必须与零成本的 mock 单测分开执行；
+ * 跑法：export AI_API_KEY=sk-xxx && ./mvnw test -DexcludedGroups=
  */
 @Tag("integration")
 @SpringBootTest

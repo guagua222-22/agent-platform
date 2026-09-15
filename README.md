@@ -1,6 +1,6 @@
 # Agent Platform
 
-AI Agent 平台（校招项目）：**Agent Harness（构建层）+ Agent Runtime（执行层）**，Java 21 + Spring Boot 3.5 + Spring AI（DeepSeek）。
+AI Agent 平台（校招项目）：**Agent Harness（构建层）+ Agent Runtime（执行层）**，Java 21 + Spring Boot 3.5 + Spring AI（千问 DashScope，OpenAI 兼容协议）。
 
 ```
 agent-platform/
@@ -15,13 +15,13 @@ agent-platform/
 ## 快速开始
 
 ```bash
-# 1. 配置 DeepSeek API Key（环境变量，勿写入配置文件）
-export DEEPSEEK_API_KEY=sk-xxxx
+# 1. 配置 API Key（千问平台 platform.qianwen.com 申请，环境变量，勿写入配置文件）
+export AI_API_KEY=sk-xxxx
 
 # 2. 单元测试（mock 模型，不花钱，默认跑）
 ./mvnw test
 
-# 3. 集成测试（真调 DeepSeek，需要网络与 KEY）
+# 3. 集成测试（真调千问模型，需要网络与 KEY）
 ./mvnw test -DexcludedGroups=
 
 # 4. 启动应用

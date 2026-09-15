@@ -19,10 +19,15 @@
             <artifactId>agent-harness</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- DeepSeek 官方适配器：自动配置 ChatModel bean（OpenAI 兼容协议，国内直连） -->
+        <!--
+            模型接入：OpenAI 兼容协议适配器。
+            为什么用 OpenAI starter 而不是供应商专属 starter：DashScope（千问）、DeepSeek 等
+            国内主流平台都提供 OpenAI 兼容端点，协议同源；ReActLoop 只依赖 ChatModel 抽象，
+            换供应商只改 yml 的 base-url/key，零代码改动——这就是模型网关可插拔的基础。
+        -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-model-deepseek</artifactId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
