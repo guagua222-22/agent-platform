@@ -21,6 +21,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.function.FunctionToolCallback;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -54,11 +55,16 @@ public class ReActLoop implements LoopStrategy {
         history.add(new SystemMessage(definition.getSystemPrompt()));
         history.add(new UserMessage(run.getInput()));
 
-        Map<String, Tool> toolsByName = definition.getTools().stream()
-                .collect(Collectors.toMap(Tool::name, t -> t));
+        // 工具适配只做一次：ToolCallback 既是模型侧的 Schema 声明，也是执行侧的反序列化入口。
+        // 为什么执行工具必须走 callback.call() 而不是直接 tool.execute()：
+        // 模型传来的 arguments 是原始 JSON 字符串，需要按工具 inputType 反序列化成参数对象，
+        // ToolCallback 内部自带这条"JSON -> 参数对象 -> 调用"链路，直接调用 Tool 会拿到字符串撞上类型墙
+        ToolCallback[] callbacks = toToolCallbacks(definition);
+        Map<String, ToolCallback> callbacksByName = Arrays.stream(callbacks)
+                .collect(Collectors.toMap(cb -> cb.getToolDefinition().name(), cb -> cb));
 
         ToolCallingChatOptions options = ToolCallingChatOptions.builder()
-                .toolCallbacks(toToolCallbacks(definition))
+                .toolCallbacks(callbacks)
                 .internalToolExecutionEnabled(false)
                 .build();
 
@@ -81,12 +87,12 @@ public class ReActLoop implements LoopStrategy {
                 String result;
                 String error = null;
                 try {
-                    Tool tool = toolsByName.get(call.name());
-                    if (tool == null) {
+                    ToolCallback callback = callbacksByName.get(call.name());
+                    if (callback == null) {
                         // 模型幻觉出未注册的工具名：把错误当观察回填，让模型自我纠正
                         throw new IllegalArgumentException("模型调用了不存在的工具: " + call.name());
                     }
-                    result = tool.execute(call.arguments());
+                    result = callback.call(call.arguments());
                 } catch (Exception e) {
                     result = null;
                     error = e.getMessage();

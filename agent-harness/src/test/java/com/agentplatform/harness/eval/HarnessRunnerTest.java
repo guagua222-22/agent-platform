@@ -19,7 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HarnessRunnerTest {
 
-    private static final Tool<String> CALCULATOR = new Tool<>() {
+    private record CalcArgs(String expression) {
+    }
+
+    private static final Tool<CalcArgs> CALCULATOR = new Tool<>() {
         @Override
         public String name() {
             return "calculator";
@@ -31,12 +34,12 @@ class HarnessRunnerTest {
         }
 
         @Override
-        public Class<String> inputType() {
-            return String.class;
+        public Class<CalcArgs> inputType() {
+            return CalcArgs.class;
         }
 
         @Override
-        public String execute(String arguments) {
+        public String execute(CalcArgs args) {
             return "1081";
         }
     };
@@ -53,8 +56,8 @@ class HarnessRunnerTest {
                 .build();
 
         // 两个用例共用同一个"剧本"模型：每用例 2 轮模型调用
-        model.scriptToolCall("calculator", "23*47").scriptAnswer("结果是 1081");
-        model.scriptToolCall("calculator", "1+1").scriptAnswer("结果是 2");
+        model.scriptToolCall("calculator", "{\"expression\":\"23*47\"}").scriptAnswer("结果是 1081");
+        model.scriptToolCall("calculator", "{\"expression\":\"1+1\"}").scriptAnswer("结果是 2");
 
         TestCase case1 = TestCase.builder()
                 .id("calc-001").name("乘法运算").input("23*47 等于多少")

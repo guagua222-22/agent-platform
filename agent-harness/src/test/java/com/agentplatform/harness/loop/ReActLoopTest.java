@@ -22,8 +22,12 @@ class ReActLoopTest {
     private MockToolCallingChatModel model;
     private ReActLoop loop;
 
+    /** 参数对象：与 agent-app 的 CalcArgs 同构，保证测试覆盖"JSON -> 对象"反序列化路径 */
+    private record CalcArgs(String expression) {
+    }
+
     /** 真计算器工具（与 agent-app 中一致的最小实现），mock 只换模型不换工具 */
-    private static final Tool<String> CALCULATOR = new Tool<>() {
+    private static final Tool<CalcArgs> CALCULATOR = new Tool<>() {
         @Override
         public String name() {
             return "calculator";
@@ -35,13 +39,17 @@ class ReActLoopTest {
         }
 
         @Override
-        public Class<String> inputType() {
-            return String.class;
+        public Class<CalcArgs> inputType() {
+            return CalcArgs.class;
         }
 
         @Override
-        public String execute(String arguments) {
-            return new BigDecimal(arguments.trim()).toPlainString();
+        public String execute(CalcArgs args) {
+            // 最小乘法解析（测试剧本固定 23*47 场景），不必复刻完整四则运算
+            String[] parts = args.expression().trim().split("\\*");
+            BigDecimal a = new BigDecimal(parts[0].trim());
+            BigDecimal b = new BigDecimal(parts[1].trim());
+            return a.multiply(b).toPlainString();
         }
     };
 
@@ -64,7 +72,7 @@ class ReActLoopTest {
     /** 完整两轮：第一轮模型要调工具，第二轮给出最终回答 */
     @Test
     void executesToolThenAnswers() {
-        model.scriptToolCall("calculator", "23*47")
+        model.scriptToolCall("calculator", "{\"expression\":\"23*47\"}")
                 .scriptAnswer("23*47 的结果是 1081");
 
         AgentRun run = new AgentRun("calc", "23*47 等于多少");
@@ -74,13 +82,15 @@ class ReActLoopTest {
         assertEquals("23*47 的结果是 1081", run.getFinalAnswer());
         assertTrue(run.getEvents().stream().anyMatch(e -> e.type() == AgentEvent.EventType.TOOL_CALLED));
         assertTrue(run.getEvents().stream().anyMatch(e -> e.type() == AgentEvent.EventType.TOOL_RESULT));
+        assertTrue(run.getEvents().stream().anyMatch(e ->
+                e.type() == AgentEvent.EventType.TOOL_RESULT && e.detail().contains("result=")));
         assertEquals(2, model.callCount(), "应恰好两轮模型调用");
     }
 
     /** 模型幻觉出不存在的工具：错误作为观察回填，模型下一轮仍有机会给出答案 */
     @Test
     void unknownToolBecomesObservationAndContinues() {
-        model.scriptToolCall("not_exist", "x")
+        model.scriptToolCall("not_exist", "{}")
                 .scriptAnswer("我无法使用该工具");
 
         AgentRun run = new AgentRun("calc", "hi");
@@ -94,7 +104,7 @@ class ReActLoopTest {
     /** 工具执行抛异常：同样作为观察回填，循环不中断 */
     @Test
     void toolFailureBecomesObservation() {
-        Tool<String> failingTool = new Tool<>() {
+        Tool<CalcArgs> failingTool = new Tool<>() {
             @Override
             public String name() {
                 return "bomb";
@@ -106,19 +116,19 @@ class ReActLoopTest {
             }
 
             @Override
-            public Class<String> inputType() {
-                return String.class;
+            public Class<CalcArgs> inputType() {
+                return CalcArgs.class;
             }
 
             @Override
-            public String execute(String arguments) {
+            public String execute(CalcArgs args) {
                 throw new IllegalStateException("boom");
             }
         };
         AgentDefinition def = AgentDefinition.builder()
                 .name("calc").tool(failingTool).loopStrategy(loop).maxSteps(5).build();
 
-        model.scriptToolCall("bomb", "x").scriptAnswer("工具坏了，抱歉");
+        model.scriptToolCall("bomb", "{\"expression\":\"x\"}").scriptAnswer("工具坏了，抱歉");
 
         AgentRun run = new AgentRun("calc", "hi");
         loop.execute(def, run, run::addEvent);
@@ -131,9 +141,9 @@ class ReActLoopTest {
     /** 模型无限调工具：达到 maxSteps 必须抛异常终止，防死循环是 ReAct 的硬约束 */
     @Test
     void maxStepsGuardThrows() {
-        model.scriptToolCall("calculator", "1+1")
-                .scriptToolCall("calculator", "1+1")
-                .scriptToolCall("calculator", "1+1");
+        model.scriptToolCall("calculator", "{\"expression\":\"1+1\"}")
+                .scriptToolCall("calculator", "{\"expression\":\"1+1\"}")
+                .scriptToolCall("calculator", "{\"expression\":\"1+1\"}");
 
         AgentRun run = new AgentRun("calc", "hi");
         List<AgentEvent> events = new ArrayList<>();
@@ -149,7 +159,7 @@ class ReActLoopTest {
         model.scriptAnswer("你好！");
 
         AgentRun run = new AgentRun("chat", "你好");
-        loop.execute(def, run, event -> { });
+        loop.execute(def, run, run::addEvent);
 
         assertEquals("你好！", run.getFinalAnswer());
         assertEquals(1, model.callCount());
