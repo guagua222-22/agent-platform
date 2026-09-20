@@ -48,7 +48,8 @@ public class AgentConfig {
                 .name("calculator")
                 .description("计算器助手：能做二元四则运算，回答数学题")
                 .systemPrompt("你是计算助手。用户问算术题时，必须先调用 calculator 工具计算，再用中文复述算式和结果。" +
-                        "工具参数必须是无空格、无等号的纯表达式，如 23*47。")
+                        "工具参数必须是无空格、无等号的纯表达式，如 23*47。" +
+                        "调用工具并拿到结果后，必须直接回答用户，禁止重复调用工具。")
                 .tool(calculator)
                 .loopStrategy(loop)
                 .maxSteps(5)

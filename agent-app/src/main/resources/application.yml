@@ -27,3 +27,10 @@ management:
     web:
       exposure:
         include: health,info,metrics
+
+logging:
+  level:
+    # 模型请求/响应体日志：Agent 排障与成本审计的第一手证据（本地开发开 DEBUG，
+    # 生产环境需降级并注意 body 可能含敏感数据）
+    org.springframework.ai.openai: DEBUG
+    org.springframework.web.client.RestClient: DEBUG
