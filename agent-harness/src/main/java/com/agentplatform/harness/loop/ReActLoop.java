@@ -108,8 +108,9 @@ public class ReActLoop implements LoopStrategy {
 
     /**
      * 平台 Tool 契约 -> Spring AI ToolCallback 的适配。
-     * M0 参数是单字符串（见 Tool 契约注释），因此 inputType 固定 String.class；
-     * M1 升级结构化参数时，这里改为按工具各自的 JSON Schema 生成。
+     * 按工具各自的 inputType 生成 JSON Schema，模型据此输出结构化参数。
+     * 泛型在适配层必然擦除为 Object/Function 原始类型——这是框架边界的固有成本，
+     * 用 @SuppressWarnings 收敛在最小范围。
      */
     private ToolCallback[] toToolCallbacks(AgentDefinition definition) {
         return definition.getTools().stream()
@@ -117,11 +118,11 @@ public class ReActLoop implements LoopStrategy {
                 .toArray(ToolCallback[]::new);
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private ToolCallback adapt(Tool tool) {
-        Function<String, String> fn = tool::execute;
-        return FunctionToolCallback.builder(tool.name(), fn)
+        return FunctionToolCallback.builder(tool.name(), (Function) tool::execute)
                 .description(tool.description())
-                .inputType(String.class)
+                .inputType((Class) tool.inputType())
                 .build();
     }
 }

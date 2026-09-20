@@ -11,15 +11,21 @@ import java.util.regex.Pattern;
 /**
  * 计算器工具（M0 示例工具）：二元四则运算。
  *
- * 安全设计：先用正则白名单校验输入再计算——
- * 工具参数来自模型输出（不可信输入），任何"先解析再校验"的写法都可能被注入
- * （M3 沙箱会再加进程级隔离，这里是第一道防线）。
+ * 参数设计（结构化 record）：
+ * 1. 模型按 inputType 生成的 JSON Schema 输出对象参数 {"expression": "..."}，
+ *    规避 DashScope 兼容层对请求回放中字符串 arguments 的严格校验（实测 400）；
+ * 2. 安全设计不变：正则白名单校验内容——工具参数来自模型输出（不可信输入），
+ *    任何"先解析再校验"的写法都可能被注入（M3 沙箱会再加进程级隔离）。
  */
 @Component
-public class CalculatorTool implements Tool {
+public class CalculatorTool implements Tool<CalculatorTool.CalcArgs> {
 
     private static final Pattern EXPR =
             Pattern.compile("^(-?\\d+(?:\\.\\d+)?)\\s*([+\\-*/])\\s*(-?\\d+(?:\\.\\d+)?)$");
+
+    /** 工具参数契约：expression 为数学表达式字符串 */
+    public record CalcArgs(String expression) {
+    }
 
     @Override
     public String name() {
@@ -27,17 +33,24 @@ public class CalculatorTool implements Tool {
     }
 
     @Override
-    public String description() {
-        return "计算二元四则运算。参数格式：一个数学表达式字符串，如 \"23*47\" 或 \"100/3\"。" +
-                "仅支持 a+b、a-b、a*b、a/b 形式的整数或小数运算。";
+    public Class<CalcArgs> inputType() {
+        return CalcArgs.class;
     }
 
     @Override
-    public String execute(String arguments) {
-        // 工具输入归一化：模型输出的 tool arguments 存在格式漂移
-        // （实测 qwen 会给字符串参数多包一层引号，如 "\"21*2\""），
+    public String description() {
+        return "计算二元四则运算。参数是 JSON 对象，格式：{\"expression\": \"数学表达式\"}，" +
+                "例如 {\"expression\": \"23*47\"}。仅支持 a+b、a-b、a*b、a/b 形式的整数或小数运算。";
+    }
+
+    @Override
+    public String execute(CalcArgs args) {
+        if (args == null || args.expression() == null) {
+            throw new IllegalArgumentException("缺少 expression 参数");
+        }
+        // 工具输入归一化：模型输出的参数存在格式漂移（实测 qwen 会给字符串多包一层引号），
         // 工具入口必须宽容——剥掉成对引号后再校验，而不是直接拒绝
-        String expr = normalize(arguments);
+        String expr = normalize(args.expression());
         Matcher m = EXPR.matcher(expr);
         if (!m.matches()) {
             throw new IllegalArgumentException(

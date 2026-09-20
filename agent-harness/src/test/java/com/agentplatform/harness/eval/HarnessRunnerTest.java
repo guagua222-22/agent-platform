@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HarnessRunnerTest {
 
-    private static final Tool CALCULATOR = new Tool() {
+    private static final Tool<String> CALCULATOR = new Tool<>() {
         @Override
         public String name() {
             return "calculator";
@@ -28,6 +28,11 @@ class HarnessRunnerTest {
         @Override
         public String description() {
             return "计算二元四则运算";
+        }
+
+        @Override
+        public Class<String> inputType() {
+            return String.class;
         }
 
         @Override

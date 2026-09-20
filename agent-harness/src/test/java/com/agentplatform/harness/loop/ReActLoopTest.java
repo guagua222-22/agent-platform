@@ -23,7 +23,7 @@ class ReActLoopTest {
     private ReActLoop loop;
 
     /** 真计算器工具（与 agent-app 中一致的最小实现），mock 只换模型不换工具 */
-    private static final Tool CALCULATOR = new Tool() {
+    private static final Tool<String> CALCULATOR = new Tool<>() {
         @Override
         public String name() {
             return "calculator";
@@ -32,6 +32,11 @@ class ReActLoopTest {
         @Override
         public String description() {
             return "计算二元四则运算";
+        }
+
+        @Override
+        public Class<String> inputType() {
+            return String.class;
         }
 
         @Override
@@ -89,7 +94,7 @@ class ReActLoopTest {
     /** 工具执行抛异常：同样作为观察回填，循环不中断 */
     @Test
     void toolFailureBecomesObservation() {
-        Tool failingTool = new Tool() {
+        Tool<String> failingTool = new Tool<>() {
             @Override
             public String name() {
                 return "bomb";
@@ -98,6 +103,11 @@ class ReActLoopTest {
             @Override
             public String description() {
                 return "总是失败";
+            }
+
+            @Override
+            public Class<String> inputType() {
+                return String.class;
             }
 
             @Override

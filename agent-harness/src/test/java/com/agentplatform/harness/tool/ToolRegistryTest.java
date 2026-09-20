@@ -9,8 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ToolRegistryTest {
 
-    private static Tool tool(String name) {
-        return new Tool() {
+    private static Tool<String> tool(String name) {
+        return new Tool<>() {
             @Override
             public String name() {
                 return name;
@@ -19,6 +19,11 @@ class ToolRegistryTest {
             @Override
             public String description() {
                 return "d";
+            }
+
+            @Override
+            public Class<String> inputType() {
+                return String.class;
             }
 
             @Override
