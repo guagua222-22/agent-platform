@@ -36,6 +36,20 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-jdbc</artifactId>
         </dependency>
+        <!--
+            Redis 数据访问：Checkpoint 热数据与 Lua 限流都用 RedisTemplate。
+            为什么 runtime 直接用 spring-data-redis：Redis 是 Runtime 基础设施的
+            核心依赖（checkpoint/限流/记忆），与执行引擎同层。
+        -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-redis</artifactId>
+        </dependency>
+        <!-- Checkpoint JSON 序列化（spring-data-redis 传递引入，这里显式声明意图） -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

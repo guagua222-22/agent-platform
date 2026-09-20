@@ -4,11 +4,16 @@ import com.agentplatform.core.agent.AgentDefinition;
 import com.agentplatform.harness.loop.ReActLoop;
 import com.agentplatform.harness.tool.ToolRegistry;
 import com.agentplatform.runtime.AgentRuntime;
+import com.agentplatform.runtime.checkpoint.CheckpointStore;
+import com.agentplatform.runtime.checkpoint.RedisCheckpointStore;
 import com.agentplatform.runtime.persistence.JdbcRunRepository;
 import com.agentplatform.runtime.persistence.RunRepository;
+import com.agentplatform.runtime.ratelimit.RateLimiter;
+import com.agentplatform.runtime.ratelimit.RedisRateLimiter;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.LinkedHashMap;
@@ -30,11 +35,22 @@ public class AgentConfig {
     }
 
     @Bean
-    public ReActLoop reActLoop(ChatModel model) {
+    public CheckpointStore checkpointStore(StringRedisTemplate redisTemplate) {
+        return new RedisCheckpointStore(redisTemplate);
+    }
+
+    @Bean
+    public RateLimiter rateLimiter(StringRedisTemplate redisTemplate) {
+        // 演示参数：桶容量 10（允许短时突发），每秒回填 1 个令牌——持续高频才会被限
+        return new RedisRateLimiter(redisTemplate, 10, 1);
+    }
+
+    @Bean
+    public ReActLoop reActLoop(ChatModel model, CheckpointStore checkpointStore) {
         // model 是 OpenAI 兼容适配器自动装配的 bean（当前指向千问 DashScope 端点）；
         // ReActLoop 只依赖抽象接口，换供应商（DeepSeek/通义/Ollama/Mock）时
         // 此处注入不同的 bean 或改 yml 的 base-url 即可，Loop 零改动
-        return new ReActLoop(model);
+        return new ReActLoop(model, checkpointStore);
     }
 
     @Bean

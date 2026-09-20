@@ -5,6 +5,7 @@ import com.agentplatform.core.model.AgentEvent;
 import com.agentplatform.core.model.AgentRun;
 import com.agentplatform.runtime.AgentRuntime;
 import com.agentplatform.runtime.persistence.RunRepository;
+import com.agentplatform.runtime.ratelimit.RateLimiter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,11 +36,14 @@ public class AgentController {
     private final Map<String, AgentDefinition> agents;
     private final AgentRuntime runtime;
     private final RunRepository repository;
+    private final RateLimiter rateLimiter;
 
-    public AgentController(Map<String, AgentDefinition> agents, AgentRuntime runtime, RunRepository repository) {
+    public AgentController(Map<String, AgentDefinition> agents, AgentRuntime runtime,
+                           RunRepository repository, RateLimiter rateLimiter) {
         this.agents = agents;
         this.runtime = runtime;
         this.repository = repository;
+        this.rateLimiter = rateLimiter;
     }
 
     @GetMapping("/agents")
@@ -55,6 +59,12 @@ public class AgentController {
         AgentDefinition definition = agents.get(name);
         if (definition == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Agent 不存在: " + name);
+        }
+
+        // 限流在最外层：LLM 调用是付费资源，必须在进入执行前拦截。
+        // 维度按 agent 名——每个 Agent 独立配额，互不挤占
+        if (!rateLimiter.tryAcquire("agent:" + name)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "请求过于频繁，请稍后再试");
         }
 
         // 超时 120s：Agent 单次运行超过该时长视为异常，客户端可据此做超时兜底
