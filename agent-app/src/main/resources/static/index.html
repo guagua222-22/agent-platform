@@ -188,7 +188,9 @@
         '/chat?message=' + encodeURIComponent(text), { method: 'POST' });
       if (!resp.ok) {
         view.bubble.className = 'bubble err';
-        view.bubble.textContent = 'HTTP ' + resp.status + '（检查应用是否启动、AI_API_KEY 是否配置）';
+        view.bubble.textContent = resp.status === 429
+          ? 'HTTP 429：请求过于频繁（限流生效），稍等片刻再试'
+          : 'HTTP ' + resp.status + '（检查应用是否启动、AI_API_KEY 是否配置）';
         return;
       }
       const reader = resp.body.getReader();
