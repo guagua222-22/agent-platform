@@ -2,7 +2,9 @@ package com.agentplatform.app.api;
 
 import com.agentplatform.core.agent.AgentDefinition;
 import com.agentplatform.core.model.AgentEvent;
+import com.agentplatform.core.model.AgentRun;
 import com.agentplatform.runtime.AgentRuntime;
+import com.agentplatform.runtime.persistence.RunRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -26,18 +29,20 @@ import java.util.Map;
  * 适合需要客户端频繁主动发消息的场景，用在这里属于杀鸡用牛刀且增加部署复杂度。
  */
 @RestController
-@RequestMapping("/api/agents")
+@RequestMapping("/api")
 public class AgentController {
 
     private final Map<String, AgentDefinition> agents;
     private final AgentRuntime runtime;
+    private final RunRepository repository;
 
-    public AgentController(Map<String, AgentDefinition> agents, AgentRuntime runtime) {
+    public AgentController(Map<String, AgentDefinition> agents, AgentRuntime runtime, RunRepository repository) {
         this.agents = agents;
         this.runtime = runtime;
+        this.repository = repository;
     }
 
-    @GetMapping
+    @GetMapping("/agents")
     public List<AgentInfo> list() {
         return agents.values().stream()
                 .map(a -> new AgentInfo(a.getName(), a.getDescription(),
@@ -45,7 +50,7 @@ public class AgentController {
                 .toList();
     }
 
-    @PostMapping(value = "/{name}/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PostMapping(value = "/agents/{name}/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@PathVariable String name, @RequestParam String message) {
         AgentDefinition definition = agents.get(name);
         if (definition == null) {
@@ -55,32 +60,59 @@ public class AgentController {
         // 超时 120s：Agent 单次运行超过该时长视为异常，客户端可据此做超时兜底
         SseEmitter emitter = new SseEmitter(120_000L);
 
-        // 为什么用虚拟线程：Agent 运行是"IO 密集 + 长耗时"（模型调用以秒计），
-        // 每个请求占一个平台线程会很快耗尽 Servlet 线程池；
-        // 虚拟线程由 JVM 调度、按 IO 阻塞自动挂起，几乎零成本支撑高并发长连接。
-        // M1 会把它收敛成 Runtime 内部的专用执行器，而不是散落在 Controller。
-        Thread.ofVirtual().start(() -> {
-            try {
-                runtime.run(definition, message, event -> {
+        // 并发策略由 Runtime 的虚拟线程执行器统一管理（runAsync），
+        // Controller 只声明意图、消费事件，不再自己管理线程
+        runtime.runAsync(definition, message, event -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name(event.type().name())
                                 .data(event.detail(), MediaType.TEXT_PLAIN));
                     } catch (IOException e) {
-                        // 客户端断开连接：M1 引入取消令牌后这里会主动终止运行，
-                        // M0 只抛出标记异常（被 Runtime 降级为日志，不打断 Agent 本身）
+                        // 客户端断开连接：M1-C 引入取消令牌后这里会主动终止运行，
+                        // 目前只抛出标记异常（被 Runtime 降级为日志，不打断 Agent 本身）
                         throw new ClientGoneException(e);
                     }
+                })
+                .whenComplete((run, ex) -> {
+                    if (ex != null) {
+                        emitter.completeWithError(ex);
+                    } else {
+                        emitter.complete();
+                    }
                 });
-                emitter.complete();
-            } catch (Exception e) {
-                emitter.completeWithError(e);
-            }
-        });
         return emitter;
     }
 
+    /** 运行历史：持久化的直接价值——应用重启后会话记录仍在 */
+    @GetMapping("/runs")
+    public List<RunSummary> recentRuns(@RequestParam(defaultValue = "20") int limit) {
+        return repository.findRecent(limit).stream()
+                .map(r -> new RunSummary(r.getId(), r.getAgentName(), r.getInput(),
+                        r.getState().name(), r.getStartedAt(), r.getFinishedAt()))
+                .toList();
+    }
+
+    /** 单次运行详情：记录 + 完整事件回放（演示 Checkpoint 恢复的数据基础） */
+    @GetMapping("/runs/{runId}")
+    public RunDetail runDetail(@PathVariable String runId) {
+        AgentRun run = repository.findRun(runId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "运行记录不存在: " + runId));
+        List<AgentEvent> events = repository.findEvents(runId);
+        return new RunDetail(run.getId(), run.getAgentName(), run.getInput(),
+                run.getState().name(), run.getFinalAnswer(), run.getError(),
+                run.getStartedAt(), run.getFinishedAt(), events);
+    }
+
     public record AgentInfo(String name, String description, List<String> tools, int maxSteps) {
+    }
+
+    public record RunSummary(String id, String agentName, String input, String state,
+                             Instant startedAt, Instant finishedAt) {
+    }
+
+    public record RunDetail(String id, String agentName, String input, String state,
+                            String finalAnswer, String error,
+                            Instant startedAt, Instant finishedAt, List<AgentEvent> events) {
     }
 
     private static final class ClientGoneException extends RuntimeException {

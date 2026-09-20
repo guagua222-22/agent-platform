@@ -34,6 +34,29 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <!--
+            持久化三件套：
+            starter-jdbc 提供 DataSource/JdbcTemplate 自动配置；
+            mysql-connector-j 是驱动（runtime scope，不传递到依赖方编译期）；
+            flyway-core + flyway-mysql 做版本化数据库迁移（生产级 schema 变更基线）。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+        <!--
             生产级底线：应用一启动就要有 health/metrics 探针。
             M4 会在此之上加 Token 成本、首 token 延迟等 Agent 专属指标。
         -->

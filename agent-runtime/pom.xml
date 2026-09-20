@@ -28,6 +28,14 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
+        <!--
+            Spring JDBC：持久化实现（JdbcRunRepository）只用 JdbcTemplate 这一个类，
+            版本由 Spring Boot 父 POM 管理，Runtime 不绑定具体数据库驱动（驱动由 app 提供）。
+        -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

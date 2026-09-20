@@ -14,10 +14,10 @@ import java.util.UUID;
  */
 public class AgentRun {
 
-    private final String id = UUID.randomUUID().toString();
+    private final String id;
     private final String agentName;
     private final String input;
-    private final Instant startedAt = Instant.now();
+    private final Instant startedAt;
     private final List<AgentEvent> events = new ArrayList<>();
 
     private volatile RunState state = RunState.CREATED;
@@ -26,8 +26,33 @@ public class AgentRun {
     private volatile Instant finishedAt;
 
     public AgentRun(String agentName, String input) {
+        this.id = UUID.randomUUID().toString();
         this.agentName = agentName;
         this.input = input;
+        this.startedAt = Instant.now();
+    }
+
+    /**
+     * 从持久化存储恢复运行记录（Checkpoint/历史查询用）。
+     * 为什么是静态工厂而非公开构造器：恢复出的记录直接是历史快照，
+     * 与"新建运行"语义不同——恢复场景禁止再次进入状态机迁移。
+     */
+    public static AgentRun restore(String id, String agentName, String input, RunState state,
+                                   String finalAnswer, String error,
+                                   Instant startedAt, Instant finishedAt) {
+        AgentRun run = new AgentRun(id, agentName, input, startedAt);
+        run.state = state;
+        run.finalAnswer = finalAnswer;
+        run.error = error;
+        run.finishedAt = finishedAt;
+        return run;
+    }
+
+    private AgentRun(String id, String agentName, String input, Instant startedAt) {
+        this.id = id;
+        this.agentName = agentName;
+        this.input = input;
+        this.startedAt = startedAt;
     }
 
     /**

@@ -19,6 +19,17 @@ spring:
           temperature: 0.3
           max-tokens: 2000
 
+  datasource:
+    # 3307：本机原生 MySQL 服务占 3306，容器映射端口见 docker-compose.yml
+    url: jdbc:mysql://localhost:3307/agent_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: ${MYSQL_PASSWORD:agent123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    # 版本化迁移：任何环境从零启动都能重建到当前 schema（V1__init_agent_tables.sql）
+    enabled: true
+    baseline-on-migrate: true
+
 server:
   port: 8080
 

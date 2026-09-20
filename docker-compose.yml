@@ -1,0 +1,27 @@
+# M1 基础设施：MySQL + Redis（开发环境）
+# 为什么 MySQL 映射 3307：本机 Windows 原生 MySQL 服务已占用 3306，容器必须避开；
+# 为什么数据卷单独声明：容器销毁重建后数据仍在，开发期不丢会话历史。
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: agent-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: agent123
+      MYSQL_DATABASE: agent_platform
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  redis:
+    image: redis:7
+    container_name: agent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  mysql-data:
+  redis-data:

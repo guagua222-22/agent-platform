@@ -4,9 +4,12 @@ import com.agentplatform.core.agent.AgentDefinition;
 import com.agentplatform.harness.loop.ReActLoop;
 import com.agentplatform.harness.tool.ToolRegistry;
 import com.agentplatform.runtime.AgentRuntime;
+import com.agentplatform.runtime.persistence.JdbcRunRepository;
+import com.agentplatform.runtime.persistence.RunRepository;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -35,8 +38,14 @@ public class AgentConfig {
     }
 
     @Bean
-    public AgentRuntime agentRuntime() {
-        return new AgentRuntime();
+    public RunRepository runRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcRunRepository(jdbcTemplate);
+    }
+
+    @Bean(destroyMethod = "close")
+    public AgentRuntime agentRuntime(RunRepository repository) {
+        // destroyMethod=close：应用停机时回收虚拟线程执行器，避免线程泄漏
+        return new AgentRuntime(repository);
     }
 
     @Bean
