@@ -34,9 +34,14 @@ public class CalculatorTool implements Tool {
 
     @Override
     public String execute(String arguments) {
-        Matcher m = EXPR.matcher(arguments == null ? "" : arguments.trim());
+        // 工具输入归一化：模型输出的 tool arguments 存在格式漂移
+        // （实测 qwen 会给字符串参数多包一层引号，如 "\"21*2\""），
+        // 工具入口必须宽容——剥掉成对引号后再校验，而不是直接拒绝
+        String expr = normalize(arguments);
+        Matcher m = EXPR.matcher(expr);
         if (!m.matches()) {
-            throw new IllegalArgumentException("表达式格式非法（仅支持 a+b a-b a*b a/b）: " + arguments);
+            throw new IllegalArgumentException(
+                    "表达式格式非法（支持 a+b a-b a*b a/b，如 23*47）: " + expr);
         }
         BigDecimal a = new BigDecimal(m.group(1));
         String op = m.group(2);
@@ -55,5 +60,17 @@ public class CalculatorTool implements Tool {
             default -> throw new IllegalStateException("不可达: " + op);
         };
         return result.toPlainString();
+    }
+
+    /** 剥掉参数首尾成对的引号（可能多层），并 trim 空白 */
+    private static String normalize(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String s = raw.trim();
+        while (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) {
+            s = s.substring(1, s.length() - 1).trim();
+        }
+        return s;
     }
 }
