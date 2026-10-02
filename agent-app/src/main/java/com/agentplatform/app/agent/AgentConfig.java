@@ -2,6 +2,7 @@ package com.agentplatform.app.agent;
 
 import com.agentplatform.core.agent.AgentDefinition;
 import com.agentplatform.harness.loop.ReActLoop;
+import com.agentplatform.harness.knowledge.KnowledgeSearchTool;
 import com.agentplatform.harness.tool.ToolRegistry;
 import com.agentplatform.runtime.AgentRuntime;
 import com.agentplatform.runtime.checkpoint.CheckpointStore;
@@ -65,8 +66,12 @@ public class AgentConfig {
     }
 
     @Bean
-    public Map<String, AgentDefinition> agents(ToolRegistry registry, CalculatorTool calculator, ReActLoop loop) {
+    public Map<String, AgentDefinition> agents(ToolRegistry registry, CalculatorTool calculator,
+                                               TimeTool timeTool, KnowledgeSearchTool knowledgeSearch,
+                                               ReActLoop loop) {
         registry.register(calculator);
+        registry.register(timeTool);
+        registry.register(knowledgeSearch);
 
         // 工具型 Agent：强调"先算后答"，提示词把工具使用规则说死，降低模型自由发挥空间
         AgentDefinition calculatorAgent = AgentDefinition.builder()
@@ -89,9 +94,36 @@ public class AgentConfig {
                 .maxSteps(3)
                 .build();
 
+        // 通用任务 Agent：多工具组合，模型按意图自主路由（面试讲"工具调用路由"的活例子）
+        AgentDefinition assistantAgent = AgentDefinition.builder()
+                .name("assistant")
+                .description("通用任务助手：会算数、会查时间")
+                .systemPrompt("你是通用任务助手，有两个工具可用：计算用 calculator，问时间用 get_current_time。" +
+                        "按用户意图选择合适工具；与工具无关的闲聊直接回答。" +
+                        "工具拿到结果后必须直接回答，禁止重复调用。")
+                .tool(calculator)
+                .tool(timeTool)
+                .loopStrategy(loop)
+                .maxSteps(5)
+                .build();
+
+        // RAG 知识库 Agent：先检索后回答，回答必须带来源引用（引用溯源是 RAG 可信度的命脉）
+        AgentDefinition knowledgeAgent = AgentDefinition.builder()
+                .name("knowledge")
+                .description("知识库助手：基于已上传文档回答问题，并注明来源")
+                .systemPrompt("你是知识库助手。回答用户问题前，必须先调用 knowledge_search 工具检索知识库。" +
+                        "严格基于检索到的片段回答，并在答案中注明来源文档与片段编号，格式如【来源：《文档名》片段N】。" +
+                        "若检索结果不足以回答，直接说明知识库信息不足，不得编造。")
+                .tool(knowledgeSearch)
+                .loopStrategy(loop)
+                .maxSteps(5)
+                .build();
+
         Map<String, AgentDefinition> agents = new LinkedHashMap<>();
         agents.put(calculatorAgent.getName(), calculatorAgent);
         agents.put(chatAgent.getName(), chatAgent);
+        agents.put(assistantAgent.getName(), assistantAgent);
+        agents.put(knowledgeAgent.getName(), knowledgeAgent);
         return agents;
     }
 }
