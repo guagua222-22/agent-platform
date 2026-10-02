@@ -89,6 +89,52 @@
     border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 知识库面板（模态） */
+  #kb-btn {
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 14px; font-size: 13px; cursor: pointer;
+  }
+  #kb-btn:hover { border-color: var(--accent); color: var(--accent); }
+  #kb-modal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    z-index: 10; align-items: center; justify-content: center;
+  }
+  #kb-modal.open { display: flex; }
+  .kb-panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    width: min(720px, 92vw); max-height: 84vh; overflow-y: auto; padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .kb-panel h2 { font-size: 15px; }
+  .kb-panel .close {
+    margin-left: auto; background: none; border: none; color: var(--muted);
+    font-size: 18px; cursor: pointer;
+  }
+  .kb-row { display: flex; gap: 10px; align-items: center; }
+  .kb-panel input[type="text"], .kb-panel textarea {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none; font-family: inherit;
+  }
+  .kb-panel textarea { width: 100%; min-height: 140px; resize: vertical; }
+  .kb-panel .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .kb-panel .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .kb-panel .hint-text { font-size: 12px; color: var(--muted); }
+  .kb-doc {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+    font-size: 13px; display: flex; gap: 10px; align-items: center;
+  }
+  .kb-doc .st { color: var(--ok); }
+  .kb-hit {
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+    font-size: 13px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .kb-hit .score { color: var(--accent); font-size: 12px; }
+  .kb-hit .src { color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -96,6 +142,7 @@
 <header>
   <h1>Agent Platform <span class="sub">Harness 构建 · Runtime 执行 · 事件流实时可见</span></h1>
   <select id="agent-select" title="选择 Agent"></select>
+  <button id="kb-btn" title="上传文档、查看知识库与向量检索">知识库</button>
 </header>
 
 <div id="chat">
@@ -106,6 +153,43 @@
   <input id="input" placeholder="例如：23*47 等于多少" autocomplete="off">
   <button id="send">发送</button>
 </footer>
+
+<!-- 知识库面板：上传文档 → 入库（切分+向量化+Milvus）→ 检索验证 -->
+<div id="kb-modal">
+  <div class="kb-panel">
+    <div class="kb-row">
+      <h2>知识库管理</h2>
+      <button class="close" id="kb-close">&times;</button>
+    </div>
+
+    <div>
+      <div class="kb-row">
+        <input type="text" id="kb-title" placeholder="文档标题（如：项目路线图）" style="flex:1">
+        <input type="file" id="kb-file" accept=".txt,.md" style="display:none">
+        <button class="btn" id="kb-pick" style="background:transparent;border:1px solid var(--border);color:var(--text)">选择文件</button>
+      </div>
+      <textarea id="kb-content" placeholder="粘贴文档内容，或点击"选择文件"读取本地 .txt/.md 文件"></textarea>
+      <div class="kb-row" style="margin-top:8px">
+        <button class="btn" id="kb-upload">上传入库</button>
+        <span class="hint-text" id="kb-upload-msg"></span>
+      </div>
+    </div>
+
+    <div>
+      <h2 style="margin-bottom:8px">已入库文档</h2>
+      <div id="kb-docs" class="hint-text">加载中…</div>
+    </div>
+
+    <div>
+      <h2 style="margin-bottom:8px">向量检索测试</h2>
+      <div class="kb-row">
+        <input type="text" id="kb-query" placeholder="输入检索问题，如：什么是 Agent Harness" style="flex:1">
+        <button class="btn" id="kb-search">检索</button>
+      </div>
+      <div id="kb-hits" style="margin-top:8px;display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+  </div>
+</div>
 
 <script>
   const chatEl = document.getElementById('chat');
@@ -232,6 +316,122 @@
   sendBtn.addEventListener('click', send);
   inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
   loadAgents();
+
+  // ===== 知识库面板 =====
+  const kbModal = document.getElementById('kb-modal');
+  const kbBtn = document.getElementById('kb-btn');
+  const kbClose = document.getElementById('kb-close');
+  const kbTitle = document.getElementById('kb-title');
+  const kbContent = document.getElementById('kb-content');
+  const kbFile = document.getElementById('kb-file');
+  const kbPick = document.getElementById('kb-pick');
+  const kbUpload = document.getElementById('kb-upload');
+  const kbUploadMsg = document.getElementById('kb-upload-msg');
+  const kbDocs = document.getElementById('kb-docs');
+  const kbQuery = document.getElementById('kb-query');
+  const kbSearchBtn = document.getElementById('kb-search');
+  const kbHits = document.getElementById('kb-hits');
+
+  kbBtn.addEventListener('click', () => { kbModal.classList.add('open'); loadKbDocs(); });
+  kbClose.addEventListener('click', () => kbModal.classList.remove('open'));
+  kbModal.addEventListener('click', e => { if (e.target === kbModal) kbModal.classList.remove('open'); });
+
+  // 本地文件读取：.txt/.md 直接读为文本填入内容区（上传仍走 JSON API）
+  kbPick.addEventListener('click', () => kbFile.click());
+  kbFile.addEventListener('change', () => {
+    const file = kbFile.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      kbContent.value = String(reader.result || '');
+      if (!kbTitle.value) kbTitle.value = file.name.replace(/\.(txt|md)$/i, '');
+      kbUploadMsg.textContent = '已读取 ' + file.name + '（' + (file.size / 1024).toFixed(1) + ' KB）';
+    };
+    reader.readAsText(file);
+  });
+
+  // 上传：POST /api/knowledge/docs —— 后端完成 解析→切分→向量化→Milvus 入库
+  kbUpload.addEventListener('click', async () => {
+    const title = kbTitle.value.trim();
+    const content = kbContent.value.trim();
+    if (!title || !content) {
+      kbUploadMsg.textContent = '标题与内容不能为空';
+      return;
+    }
+    kbUpload.disabled = true;
+    kbUploadMsg.textContent = '入库中（切分 + 向量化 + Milvus 写入）…';
+    try {
+      const resp = await fetch('/api/knowledge/docs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content }),
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error('HTTP ' + resp.status + ' ' + err.slice(0, 120));
+      }
+      const result = await resp.json();
+      kbUploadMsg.textContent = '入库成功：' + result.chunkCount + ' 个分块（docId=' + result.docId.slice(0, 8) + '…）';
+      kbContent.value = '';
+      kbTitle.value = '';
+      loadKbDocs();
+    } catch (e) {
+      kbUploadMsg.textContent = '入库失败：' + e.message;
+    } finally {
+      kbUpload.disabled = false;
+    }
+  });
+
+  async function loadKbDocs() {
+    try {
+      const resp = await fetch('/api/knowledge/docs');
+      const docs = await resp.json();
+      if (!docs.length) {
+        kbDocs.textContent = '（暂无文档，上传一篇试试）';
+        return;
+      }
+      kbDocs.innerHTML = '';
+      for (const d of docs) {
+        const div = document.createElement('div');
+        div.className = 'kb-doc';
+        div.innerHTML = '<span class="st">' + d.status + '</span>' +
+          '<span style="flex:1">' + d.title + '</span>' +
+          '<span class="hint-text">' + d.chunkCount + ' 块 · ' +
+          new Date(d.createdAt).toLocaleString() + '</span>';
+        kbDocs.appendChild(div);
+      }
+    } catch (e) {
+      kbDocs.textContent = '文档列表加载失败：' + e.message;
+    }
+  }
+
+  // 检索：GET /api/knowledge/search —— 后端走 embedding 向量化 + Milvus HNSW 检索
+  kbSearchBtn.addEventListener('click', async () => {
+    const q = kbQuery.value.trim();
+    if (!q) return;
+    kbHits.innerHTML = '<span class="hint-text">检索中…</span>';
+    try {
+      const resp = await fetch('/api/knowledge/search?q=' + encodeURIComponent(q) + '&topK=5');
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const hits = await resp.json();
+      kbHits.innerHTML = '';
+      if (!hits.length) {
+        kbHits.innerHTML = '<span class="hint-text">无命中（知识库为空或语义距离过远）</span>';
+        return;
+      }
+      for (const h of hits) {
+        const div = document.createElement('div');
+        div.className = 'kb-hit';
+        div.innerHTML = '<span class="src">来源《' + h.docTitle + '》片段 ' + h.seq +
+          '</span><span class="score">相关度 ' + h.score.toFixed(4) + '（COSINE）</span>' +
+          '<span></span>';
+        div.querySelector('span:last-child').textContent = h.content.slice(0, 300);
+        kbHits.appendChild(div);
+      }
+    } catch (e) {
+      kbHits.innerHTML = '<span class="hint-text">检索失败：' + e.message + '</span>';
+    }
+  });
 </script>
 </body>
 </html>

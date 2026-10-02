@@ -61,6 +61,16 @@ services:
       - milvus-data:/var/lib/milvus
     command: ["milvus", "run", "standalone"]
 
+  # Attu：Milvus 官方可视化工具（http://localhost:3000）
+  # 教学用途：直观查看集合结构、数据行、HNSW 索引与检索实验
+  attu:
+    image: zilliz/attu:v2.6.8
+    container_name: agent-attu
+    ports:
+      - "3000:3000"
+    environment:
+      MILVUS_URL: milvus:19530
+
 volumes:
   mysql-data:
   redis-data:
