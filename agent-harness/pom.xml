@@ -39,6 +39,16 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-model</artifactId>
         </dependency>
+        <!--
+            Milvus Java SDK：知识库向量检索。
+            为什么 Harness 依赖向量库 SDK：RAG 检索工具是 Harness 组装 Agent 的零件，
+            知识库服务（解析/切分/向量化/检索）属于构建层能力。
+        -->
+        <dependency>
+            <groupId>io.milvus</groupId>
+            <artifactId>milvus-sdk-java</artifactId>
+            <version>2.6.25</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

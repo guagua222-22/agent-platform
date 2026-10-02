@@ -1,6 +1,11 @@
-# M1 基础设施：MySQL + Redis（开发环境）
+# 开发环境基础设施：MySQL + Redis + Milvus（向量库）
 # 为什么 MySQL 映射 3307：本机 Windows 原生 MySQL 服务已占用 3306，容器必须避开；
 # 为什么数据卷单独声明：容器销毁重建后数据仍在，开发期不丢会话历史。
+#
+# Milvus 2.6 standalone 架构说明（面试考点）：
+# Milvus 本身只做向量索引与检索，元数据（集合/索引定义）存 etcd，
+# 数据文件存本地存储（2.5+ 支持 COMMON_STORAGETYPE=local，免去 MinIO 依赖，
+# 2.6 起消息队列（原 Kafka）也内置化——standalone 部署收敛为两个容器）。
 services:
   mysql:
     image: mysql:8.0
@@ -22,6 +27,42 @@ services:
     volumes:
       - redis-data:/data
 
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.16
+    container_name: agent-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+    volumes:
+      - etcd-data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  milvus:
+    image: milvusdb/milvus:v2.6.8
+    container_name: agent-milvus
+    depends_on:
+      etcd:
+        condition: service_healthy
+    ports:
+      # 19530 gRPC（SDK 连接口）；9091 指标
+      - "19530:19530"
+      - "9091:9091"
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      COMMON_STORAGETYPE: local
+      LOCAL_STORAGE_PATH: /var/lib/milvus
+    volumes:
+      - milvus-data:/var/lib/milvus
+    command: ["milvus", "run", "standalone"]
+
 volumes:
   mysql-data:
   redis-data:
+  etcd-data:
+  milvus-data:

@@ -18,6 +18,16 @@ spring:
           # 温度 0.3：任务型 Agent 需要稳定而非发散，温度过高会让工具调用格式漂移
           temperature: 0.3
           max-tokens: 2000
+      embedding:
+        # 向量化走 DashScope 的 text-embedding-v3（与对话同 Key 同端点）：
+        # 为什么不用 DeepSeek——DeepSeek API 不提供 embedding 接口，
+        # 换供应商时同样只需改这里的 base-url/model
+        base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+        api-key: ${AI_API_KEY}
+        # 与 chat 同样的坑：默认 /v1/embeddings 会和 base-url 里的 /v1 重复 → 404
+        embeddings-path: /embeddings
+        options:
+          model: text-embedding-v3
     retry:
       # 模型调用重试（Spring AI 内置，基于 Resilience4j）：
       # 只重试瞬态错误（5xx/429/网络抖动），4xx 属非瞬态不重试（重试无意义）
