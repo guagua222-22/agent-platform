@@ -16,6 +16,7 @@ import io.milvus.param.collection.LoadCollectionParam;
 import io.milvus.param.dml.InsertParam;
 import io.milvus.param.dml.SearchParam;
 import io.milvus.param.index.CreateIndexParam;
+import io.milvus.response.QueryResultsWrapper;
 import io.milvus.response.SearchResultsWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -100,7 +101,8 @@ public class KnowledgeService {
                 .withOutFields(List.of("doc_id", "title", "seq", "content"))
                 .withTopK(topK)
                 .withFloatVectors(List.of(queryVec))
-                .withParams("{\"nprobe\":10}")
+                // HNSW 索引的检索参数是 ef（候选集大小），不是 IVF 的 nprobe
+                .withParams("{\"ef\":64}")
                 .build());
         if (resp.getStatus() != 0) {
             throw new IllegalStateException("向量检索失败: " + resp.getMessage());
@@ -108,19 +110,21 @@ public class KnowledgeService {
 
         List<SearchHit> hits = new ArrayList<>();
         SearchResultsWrapper wrapper = new SearchResultsWrapper(resp.getData().getResults());
-        List<SearchResultsWrapper.IDScore> scores;
+        // 必须用 getRowRecords：SDK 的 getIDScore 只填 id/score，
+        // outFields 的字段值由 getRowRecords 内部填充（直接用 getFieldValues 全是 null）
+        List<QueryResultsWrapper.RowRecord> records;
         try {
-            scores = wrapper.getIDScore(0);
+            records = wrapper.getRowRecords(0);
         } catch (Exception e) {
             throw new IllegalStateException("检索结果解析失败", e);
         }
-        for (SearchResultsWrapper.IDScore s : scores) {
-            Map<String, Object> fv = s.getFieldValues();
-            hits.add(new SearchHit(s.getLongID(),
-                    String.valueOf(fv.get("title")),
-                    ((Number) fv.get("seq")).intValue(),
-                    String.valueOf(fv.get("content")),
-                    s.getScore()));
+        for (QueryResultsWrapper.RowRecord rec : records) {
+            hits.add(new SearchHit(
+                    ((Number) rec.get("id")).longValue(),
+                    String.valueOf(rec.get("title")),
+                    ((Number) rec.get("seq")).intValue(),
+                    String.valueOf(rec.get("content")),
+                    ((Number) rec.get("score")).floatValue()));
         }
         return hits;
     }
