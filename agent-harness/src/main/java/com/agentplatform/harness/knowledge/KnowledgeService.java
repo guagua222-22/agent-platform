@@ -97,6 +97,7 @@ public class KnowledgeService {
         List<Float> queryVec = embed(List.of(query)).get(0);
         R<SearchResults> resp = milvus.search(SearchParam.newBuilder()
                 .withCollectionName(COLLECTION)
+                .withVectorFieldName("embedding")
                 .withMetricType(MetricType.COSINE)
                 .withOutFields(List.of("doc_id", "title", "seq", "content"))
                 .withTopK(topK)
