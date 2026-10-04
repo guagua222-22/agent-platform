@@ -55,6 +55,12 @@ public class AgentDefinition {
         public Builder description(String description) { this.description = description; return this; }
         public Builder systemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; return this; }
         public Builder tool(Tool tool) { this.tools.add(tool); return this; }
+
+        /**
+         * 读回已设置的 systemPrompt：Skill 装配时需要把技能片段"追加"到基础人设之后，
+         * 没有读回能力就只能由调用方自行跟踪累积内容，容易拼装错位
+         */
+        public String systemPrompt() { return systemPrompt; }
         public Builder tools(List<Tool> tools) { this.tools.addAll(tools); return this; }
         public Builder loopStrategy(LoopStrategy loopStrategy) { this.loopStrategy = loopStrategy; return this; }
 

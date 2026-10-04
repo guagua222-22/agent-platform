@@ -15,13 +15,17 @@ import java.time.Instant;
 public record AgentEvent(EventType type, Instant timestamp, String detail) {
 
     public enum EventType {
-        RUN_STARTED,     // 运行开始
-        LLM_CALLED,      // 发起一次模型调用
-        TOOL_CALLED,     // 模型要求调用某个工具
-        TOOL_RESULT,     // 工具执行完毕
-        STEP_COMPLETED,  // 一轮循环结束
-        RUN_COMPLETED,   // 运行正常结束
-        RUN_FAILED       // 运行异常结束
+        RUN_STARTED,          // 运行开始
+        MEMORY_LOADED,        // 会话记忆注入完成（M2-C）
+        LLM_CALLED,           // 发起一次模型调用
+        TOOL_CALLED,          // 模型要求调用某个工具
+        TOOL_RESULT,          // 工具执行完毕
+        STEP_COMPLETED,       // 一轮循环结束
+        PLAN_GENERATED,       // Plan-and-Execute：计划生成完毕（M2-C）
+        PLAN_STEP_STARTED,    // Plan-and-Execute：开始执行某个计划步骤
+        PLAN_STEP_COMPLETED,  // Plan-and-Execute：某个计划步骤执行完毕
+        RUN_COMPLETED,        // 运行正常结束
+        RUN_FAILED            // 运行异常结束
     }
 
     public static AgentEvent of(EventType type, String detail) {

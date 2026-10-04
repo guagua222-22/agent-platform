@@ -1,8 +1,13 @@
 package com.agentplatform.app.agent;
 
 import com.agentplatform.core.agent.AgentDefinition;
-import com.agentplatform.harness.loop.ReActLoop;
+import com.agentplatform.core.skill.Skill;
 import com.agentplatform.harness.knowledge.KnowledgeSearchTool;
+import com.agentplatform.harness.loop.PlanExecuteLoop;
+import com.agentplatform.harness.loop.ReActLoop;
+import com.agentplatform.harness.memory.ConversationMemory;
+import com.agentplatform.harness.memory.LayeredConversationMemory;
+import com.agentplatform.harness.skill.SkillRegistry;
 import com.agentplatform.harness.tool.ToolRegistry;
 import com.agentplatform.runtime.AgentRuntime;
 import com.agentplatform.runtime.checkpoint.CheckpointStore;
@@ -18,14 +23,18 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Agent 装配：Harness 零件（工具、Loop 策略）组装成可执行的 Agent 定义。
+ * Agent 装配：Harness 零件（工具 -> 技能 -> Agent 三级组装）变成可执行的 Agent 定义。
  *
- * 为什么 Agent 注册表用 Map 而非数据库：M0 只有两个内置 Agent，
- * M1 加持久化时 AgentDefinition 落 MySQL，注册表随之改为"启动时加载 + 缓存"，
- * 但"定义与装配分离"的结构不变——装配就是 Harness 的职责边界。
+ * M2-C 引入的装配分层：
+ *   工具（ToolRegistry，防重名）
+ *   -> 技能（SkillRegistry，工具 + 使用规则提示词的复用包）
+ *   -> Agent（基础人设 + 若干技能 + Loop 策略）
+ * 同一技能可服务多个 Agent（math 技能同时挂在 calculator / assistant / planner 上），
+ * 改技能规则只改一处——这正是 Harness"构建层"存在的意义。
  */
 @Configuration
 public class AgentConfig {
@@ -47,11 +56,112 @@ public class AgentConfig {
     }
 
     @Bean
-    public ReActLoop reActLoop(ChatModel model, CheckpointStore checkpointStore) {
+    public ConversationMemory conversationMemory(JdbcTemplate jdbcTemplate, ChatModel model) {
+        // 窗口 10 条（5 轮对话）：覆盖正常多轮交互的近端上下文，更早的交给摘要层压缩
+        return new LayeredConversationMemory(jdbcTemplate, model, 10);
+    }
+
+    @Bean
+    public ReActLoop reActLoop(ChatModel model, CheckpointStore checkpointStore, ConversationMemory memory) {
         // model 是 OpenAI 兼容适配器自动装配的 bean（当前指向千问 DashScope 端点）；
-        // ReActLoop 只依赖抽象接口，换供应商（DeepSeek/通义/Ollama/Mock）时
-        // 此处注入不同的 bean 或改 yml 的 base-url 即可，Loop 零改动
-        return new ReActLoop(model, checkpointStore);
+        // 换供应商（DeepSeek/通义/Ollama/Mock）只需改 yml 的 base-url，Loop 零改动
+        return new ReActLoop(model, checkpointStore, memory);
+    }
+
+    @Bean
+    public PlanExecuteLoop planExecuteLoop(ChatModel model) {
+        return new PlanExecuteLoop(model);
+    }
+
+    @Bean
+    public SkillRegistry skillRegistry(CalculatorTool calculator, TimeTool timeTool,
+                                       KnowledgeSearchTool knowledgeSearch, ToolRegistry toolRegistry) {
+        toolRegistry.register(calculator);
+        toolRegistry.register(timeTool);
+        toolRegistry.register(knowledgeSearch);
+
+        SkillRegistry skills = new SkillRegistry();
+        // 技能提示词片段即"工具使用说明书"：规则说死，降低模型自由发挥空间
+        skills.register(Skill.builder()
+                .name("math")
+                .description("四则运算：二元加减乘除")
+                .promptSnippet("【数学技能】用户问算术题时，必须先调用 calculator 工具计算，再复述算式和结果；" +
+                        "参数是无空格、无等号的纯表达式（如 23*47）；拿到结果后直接回答，禁止重复调用。")
+                .tools(List.of(calculator))
+                .build());
+        skills.register(Skill.builder()
+                .name("time")
+                .description("时间查询：当前日期时间，支持时区")
+                .promptSnippet("【时间技能】用户问现在时间/日期时，调用 get_current_time；可按时区查询。")
+                .tools(List.of(timeTool))
+                .build());
+        skills.register(Skill.builder()
+                .name("knowledge-search")
+                .description("知识库检索：从已上传文档中查找相关片段")
+                .promptSnippet("【知识检索技能】回答问题前先调用 knowledge_search 检索知识库；" +
+                        "严格基于检索片段回答，注明来源（格式【来源：《文档名》片段N】）；检索不足时明说，不得编造。")
+                .tools(List.of(knowledgeSearch))
+                .build());
+        return skills;
+    }
+
+    @Bean
+    public Map<String, AgentDefinition> agents(SkillRegistry skills,
+                                               ReActLoop reactLoop, PlanExecuteLoop planExecuteLoop) {
+        // 基础人设先行，技能片段由 applySkill 追加在后——人设与技能规则分层共存
+        AgentDefinition calculatorAgent = skills.applySkill(AgentDefinition.builder()
+                        .name("calculator")
+                        .description("计算器助手：能做二元四则运算，回答数学题")
+                        .systemPrompt("你是计算助手，用中文简洁回答。")
+                        .loopStrategy(reactLoop)
+                        .maxSteps(5),
+                "math").build();
+
+        // 纯对话 Agent：无技能（无工具）时 ReActLoop 一轮即结束
+        AgentDefinition chatAgent = AgentDefinition.builder()
+                .name("chat")
+                .description("通用中文对话助手（带会话记忆）")
+                .systemPrompt("你是一个友好、简洁的中文助手，直接回答用户问题。")
+                .loopStrategy(reactLoop)
+                .maxSteps(3)
+                .build();
+
+        // 通用任务 Agent：数学 + 时间双技能，模型按意图自主路由（工具调用路由的活例子）
+        AgentDefinition.Builder assistantBuilder = AgentDefinition.builder()
+                .name("assistant")
+                .description("通用任务助手：会算数、会查时间（带会话记忆）")
+                .systemPrompt("你是通用任务助手。按用户意图选择合适技能；与技能无关的闲聊直接回答。")
+                .loopStrategy(reactLoop)
+                .maxSteps(5);
+        skills.applySkill(assistantBuilder, "math");
+        AgentDefinition assistantAgent = skills.applySkill(assistantBuilder, "time").build();
+
+        // RAG 知识库 Agent：检索技能单独成包，回答必须带来源引用（引用溯源是 RAG 可信度的命脉）
+        AgentDefinition knowledgeAgent = skills.applySkill(AgentDefinition.builder()
+                        .name("knowledge")
+                        .description("知识库助手：基于已上传文档回答问题，并注明来源")
+                        .systemPrompt("你是知识库助手，用中文回答。")
+                        .loopStrategy(reactLoop)
+                        .maxSteps(5),
+                "knowledge-search").build();
+
+        // 规划型 Agent：Plan-and-Execute 策略，适合多步骤复杂任务（先出计划再按图施工）
+        AgentDefinition.Builder plannerBuilder = AgentDefinition.builder()
+                .name("planner")
+                .description("规划助手：先拆解任务为计划，再逐步执行并汇总（适合多步骤任务）")
+                .systemPrompt("你是任务规划助手，擅长把复杂任务拆解成可执行步骤。")
+                .loopStrategy(planExecuteLoop)
+                .maxSteps(6);
+        skills.applySkill(plannerBuilder, "math");
+        AgentDefinition plannerAgent = skills.applySkill(plannerBuilder, "time").build();
+
+        Map<String, AgentDefinition> agents = new LinkedHashMap<>();
+        agents.put(calculatorAgent.getName(), calculatorAgent);
+        agents.put(chatAgent.getName(), chatAgent);
+        agents.put(assistantAgent.getName(), assistantAgent);
+        agents.put(knowledgeAgent.getName(), knowledgeAgent);
+        agents.put(plannerAgent.getName(), plannerAgent);
+        return agents;
     }
 
     @Bean
@@ -63,67 +173,5 @@ public class AgentConfig {
     public AgentRuntime agentRuntime(RunRepository repository) {
         // destroyMethod=close：应用停机时回收虚拟线程执行器，避免线程泄漏
         return new AgentRuntime(repository);
-    }
-
-    @Bean
-    public Map<String, AgentDefinition> agents(ToolRegistry registry, CalculatorTool calculator,
-                                               TimeTool timeTool, KnowledgeSearchTool knowledgeSearch,
-                                               ReActLoop loop) {
-        registry.register(calculator);
-        registry.register(timeTool);
-        registry.register(knowledgeSearch);
-
-        // 工具型 Agent：强调"先算后答"，提示词把工具使用规则说死，降低模型自由发挥空间
-        AgentDefinition calculatorAgent = AgentDefinition.builder()
-                .name("calculator")
-                .description("计算器助手：能做二元四则运算，回答数学题")
-                .systemPrompt("你是计算助手。用户问算术题时，必须先调用 calculator 工具计算，再用中文复述算式和结果。" +
-                        "工具参数必须是无空格、无等号的纯表达式，如 23*47。" +
-                        "调用工具并拿到结果后，必须直接回答用户，禁止重复调用工具。")
-                .tool(calculator)
-                .loopStrategy(loop)
-                .maxSteps(5)
-                .build();
-
-        // 纯对话 Agent：无工具时 ReActLoop 一轮即结束（模型直接回答，不产生工具调用）
-        AgentDefinition chatAgent = AgentDefinition.builder()
-                .name("chat")
-                .description("通用中文对话助手")
-                .systemPrompt("你是一个友好、简洁的中文助手，直接回答用户问题。")
-                .loopStrategy(loop)
-                .maxSteps(3)
-                .build();
-
-        // 通用任务 Agent：多工具组合，模型按意图自主路由（面试讲"工具调用路由"的活例子）
-        AgentDefinition assistantAgent = AgentDefinition.builder()
-                .name("assistant")
-                .description("通用任务助手：会算数、会查时间")
-                .systemPrompt("你是通用任务助手，有两个工具可用：计算用 calculator，问时间用 get_current_time。" +
-                        "按用户意图选择合适工具；与工具无关的闲聊直接回答。" +
-                        "工具拿到结果后必须直接回答，禁止重复调用。")
-                .tool(calculator)
-                .tool(timeTool)
-                .loopStrategy(loop)
-                .maxSteps(5)
-                .build();
-
-        // RAG 知识库 Agent：先检索后回答，回答必须带来源引用（引用溯源是 RAG 可信度的命脉）
-        AgentDefinition knowledgeAgent = AgentDefinition.builder()
-                .name("knowledge")
-                .description("知识库助手：基于已上传文档回答问题，并注明来源")
-                .systemPrompt("你是知识库助手。回答用户问题前，必须先调用 knowledge_search 工具检索知识库。" +
-                        "严格基于检索到的片段回答，并在答案中注明来源文档与片段编号，格式如【来源：《文档名》片段N】。" +
-                        "若检索结果不足以回答，直接说明知识库信息不足，不得编造。")
-                .tool(knowledgeSearch)
-                .loopStrategy(loop)
-                .maxSteps(5)
-                .build();
-
-        Map<String, AgentDefinition> agents = new LinkedHashMap<>();
-        agents.put(calculatorAgent.getName(), calculatorAgent);
-        agents.put(chatAgent.getName(), chatAgent);
-        agents.put(assistantAgent.getName(), assistantAgent);
-        agents.put(knowledgeAgent.getName(), knowledgeAgent);
-        return agents;
     }
 }

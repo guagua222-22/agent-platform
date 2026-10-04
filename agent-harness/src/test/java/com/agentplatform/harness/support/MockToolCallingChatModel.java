@@ -56,7 +56,10 @@ public class MockToolCallingChatModel implements ChatModel {
 
     @Override
     public ChatResponse call(Prompt prompt) {
-        calls.add(prompt);
+        // 必须快照消息列表：Loop 在调用返回后会继续往同一个 history 列表里加
+        // assistant/tool 消息，Prompt 持有的是活引用——不快照的话，事后断言
+        // "模型当时看到了什么"会看到被污染的现场
+        calls.add(new Prompt(List.copyOf(prompt.getInstructions()), prompt.getOptions()));
         ChatResponse next = scripted.poll();
         if (next == null) {
             throw new IllegalStateException("Mock 模型脚本耗尽：模型比预期多调了一次");

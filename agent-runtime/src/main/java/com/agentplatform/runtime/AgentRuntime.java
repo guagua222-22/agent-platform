@@ -58,7 +58,13 @@ public class AgentRuntime {
      * Controller 不再自己 new 线程——并发策略是 Runtime 的职责，调用方只声明意图。
      */
     public CompletableFuture<AgentRun> runAsync(AgentDefinition definition, String input, AgentEventSink externalSink) {
-        return CompletableFuture.supplyAsync(() -> run(definition, input, externalSink), executor);
+        return runAsync(definition, input, null, externalSink);
+    }
+
+    /** 带会话上下文的异步执行：conversationId 非空时 Loop 可据此加载/回写会话记忆 */
+    public CompletableFuture<AgentRun> runAsync(AgentDefinition definition, String input,
+                                                String conversationId, AgentEventSink externalSink) {
+        return CompletableFuture.supplyAsync(() -> run(definition, input, conversationId, externalSink), executor);
     }
 
     /**
@@ -68,11 +74,16 @@ public class AgentRuntime {
      * @return 终态运行记录（COMPLETED 或 FAILED）
      */
     public AgentRun run(AgentDefinition definition, String input, AgentEventSink externalSink) {
+        return run(definition, input, null, externalSink);
+    }
+
+    public AgentRun run(AgentDefinition definition, String input, String conversationId, AgentEventSink externalSink) {
         Objects.requireNonNull(definition, "definition 不能为空");
         Objects.requireNonNull(definition.getLoopStrategy(), "Agent 未指定 Loop 策略: " + definition.getName());
         AgentEventSink sink = externalSink == null ? event -> { } : externalSink;
 
         AgentRun run = new AgentRun(definition.getName(), input);
+        run.setConversationId(conversationId);
         // 复合 sink：事件先存档进 run（内存真相），再旁路落库，最后转发给外部。
         // 存档是 Runtime 的底线职责，外部 sink 抛异常不允许中断运行
         AgentEventSink composite = event -> {

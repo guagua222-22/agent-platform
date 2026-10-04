@@ -6,8 +6,8 @@ import com.agentplatform.core.agent.LoopStrategy;
 import com.agentplatform.core.agent.MaxStepsExceededException;
 import com.agentplatform.core.model.AgentEvent;
 import com.agentplatform.core.model.AgentRun;
-import com.agentplatform.core.tool.Tool;
 import com.agentplatform.core.util.Strings;
+import com.agentplatform.harness.memory.ConversationMemory;
 import com.agentplatform.runtime.checkpoint.Checkpoint;
 import com.agentplatform.runtime.checkpoint.CheckpointStore;
 import org.slf4j.Logger;
@@ -22,13 +22,10 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.function.FunctionToolCallback;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -49,14 +46,20 @@ public class ReActLoop implements LoopStrategy {
 
     private final ChatModel model;
     private final CheckpointStore checkpointStore;
+    private final ConversationMemory memory;
 
     public ReActLoop(ChatModel model) {
-        this(model, null);
+        this(model, null, null);
     }
 
     public ReActLoop(ChatModel model, CheckpointStore checkpointStore) {
+        this(model, checkpointStore, null);
+    }
+
+    public ReActLoop(ChatModel model, CheckpointStore checkpointStore, ConversationMemory memory) {
         this.model = model;
         this.checkpointStore = checkpointStore;
+        this.memory = memory;
     }
 
     @Override
@@ -69,8 +72,29 @@ public class ReActLoop implements LoopStrategy {
         // 消息历史：模型是无状态的，上下文全靠这段历史承载；SystemMessage 定义角色，UserMessage 是任务
         List<Message> history = new ArrayList<>();
         history.add(new SystemMessage(definition.getSystemPrompt()));
+        // 会话记忆（M2-C）：带 conversationId 的运行注入"摘要 + 最近窗口"，
+        // 放在 system 之后、本次输入之前——人设 > 历史 > 当前问题的优先级次序
+        if (memory != null && run.getConversationId() != null) {
+            for (ConversationMemory.MemoryMessage m : memory.load(run.getConversationId())) {
+                history.add(toHistoryMessage(m));
+            }
+            sink.emit(AgentEvent.of(AgentEvent.EventType.MEMORY_LOADED,
+                    "conversation=" + run.getConversationId()));
+        }
         history.add(new UserMessage(run.getInput()));
         runLoop(definition, run, sink, history, 0);
+        // 对话闭环后回写记忆：只存"用户问 + 最终答"，中间工具过程是噪声不该进记忆
+        if (memory != null && run.getConversationId() != null && run.getFinalAnswer() != null) {
+            memory.append(run.getConversationId(), definition.getName(), run.getInput(), run.getFinalAnswer());
+        }
+    }
+
+    private Message toHistoryMessage(ConversationMemory.MemoryMessage m) {
+        return switch (m.role()) {
+            case "system" -> new SystemMessage(m.content());
+            case "assistant" -> new AssistantMessage(m.content());
+            default -> new UserMessage(m.content());
+        };
     }
 
     /**
@@ -88,12 +112,9 @@ public class ReActLoop implements LoopStrategy {
     private void runLoop(AgentDefinition definition, AgentRun run, AgentEventSink sink,
                          List<Message> history, int completedSteps) {
         // 工具适配只做一次：ToolCallback 既是模型侧的 Schema 声明，也是执行侧的反序列化入口。
-        // 为什么执行工具必须走 callback.call() 而不是直接 tool.execute()：
-        // 模型传来的 arguments 是原始 JSON 字符串，需要按工具 inputType 反序列化成参数对象，
-        // ToolCallback 内部自带这条"JSON -> 参数对象 -> 调用"链路，直接调用 Tool 会拿到字符串撞上类型墙
-        ToolCallback[] callbacks = toToolCallbacks(definition);
-        Map<String, ToolCallback> callbacksByName = Arrays.stream(callbacks)
-                .collect(Collectors.toMap(cb -> cb.getToolDefinition().name(), cb -> cb));
+        // 执行工具必须走 callback.call()（JSON -> 参数对象 -> 调用），直接调 Tool 会撞上类型墙
+        ToolCallback[] callbacks = ToolCallbacks.of(definition);
+        Map<String, ToolCallback> callbacksByName = ToolCallbacks.byName(callbacks);
 
         ToolCallingChatOptions options = ToolCallingChatOptions.builder()
                 .toolCallbacks(callbacks)
@@ -204,25 +225,5 @@ public class ReActLoop implements LoopStrategy {
                     .build();
             default -> throw new IllegalStateException("未知角色无法恢复: " + cm.role());
         };
-    }
-
-    /**
-     * 平台 Tool 契约 -> Spring AI ToolCallback 的适配。
-     * 按工具各自的 inputType 生成 JSON Schema，模型据此输出结构化参数。
-     * 泛型在适配层必然擦除为 Object/Function 原始类型——这是框架边界的固有成本，
-     * 用 @SuppressWarnings 收敛在最小范围。
-     */
-    private ToolCallback[] toToolCallbacks(AgentDefinition definition) {
-        return definition.getTools().stream()
-                .map(this::adapt)
-                .toArray(ToolCallback[]::new);
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private ToolCallback adapt(Tool tool) {
-        return FunctionToolCallback.builder(tool.name(), (Function) tool::execute)
-                .description(tool.description())
-                .inputType((Class) tool.inputType())
-                .build();
     }
 }

@@ -64,6 +64,10 @@
   .trace .tag.TOOL_RESULT { color: var(--ok); }
   .trace .tag.RUN_FAILED { color: var(--err); }
   .trace .tag.RUN_COMPLETED { color: var(--accent); }
+  .trace .tag.PLAN_GENERATED { color: #f0c05a; }
+  .trace .tag.PLAN_STEP_STARTED,
+  .trace .tag.PLAN_STEP_COMPLETED { color: #5ac8f0; }
+  .trace .tag.MEMORY_LOADED { color: #9adf8f; }
   .trace .detail { color: var(--text); word-break: break-all; }
   .bubble.err { border-color: var(--err); color: var(--err); }
   footer {
@@ -91,12 +95,13 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* 知识库面板（模态） */
-  #kb-btn {
+  #kb-btn, #conv-btn {
     background: transparent; color: var(--text);
     border: 1px solid var(--border); border-radius: 8px;
     padding: 7px 14px; font-size: 13px; cursor: pointer;
   }
-  #kb-btn:hover { border-color: var(--accent); color: var(--accent); }
+  #kb-btn:hover, #conv-btn:hover { border-color: var(--accent); color: var(--accent); }
+  #conv-label { color: var(--muted); font-size: 11px; font-family: Consolas, monospace; }
   #kb-modal {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
     z-index: 10; align-items: center; justify-content: center;
@@ -142,6 +147,8 @@
 <header>
   <h1>Agent Platform <span class="sub">Harness 构建 · Runtime 执行 · 事件流实时可见</span></h1>
   <select id="agent-select" title="选择 Agent"></select>
+  <span id="conv-label" title="当前会话 ID：同一会话内的消息会进入记忆（短期窗口 + 长期摘要）"></span>
+  <button id="conv-btn" title="换一个会话 ID，开始一段全新对话（记忆随之切换）">新会话</button>
   <button id="kb-btn" title="上传文档、查看知识库与向量检索">知识库</button>
 </header>
 
@@ -196,6 +203,27 @@
   const selectEl = document.getElementById('agent-select');
   const inputEl = document.getElementById('input');
   const sendBtn = document.getElementById('send');
+  const convLabel = document.getElementById('conv-label');
+  const convBtn = document.getElementById('conv-btn');
+
+  // 会话 ID：记忆分层的客户端锚点。存 localStorage，刷新页面不丢；
+  // 后端按它把消息存档进 MySQL，下次对话注入"摘要 + 最近窗口"
+  let conversationId = localStorage.getItem('agent-conversation-id');
+  if (!conversationId) {
+    conversationId = crypto.randomUUID();
+    localStorage.setItem('agent-conversation-id', conversationId);
+  }
+  function renderConvLabel() {
+    convLabel.textContent = '会话 ' + conversationId.slice(0, 8);
+  }
+  renderConvLabel();
+
+  convBtn.addEventListener('click', () => {
+    conversationId = crypto.randomUUID();
+    localStorage.setItem('agent-conversation-id', conversationId);
+    renderConvLabel();
+    chatEl.innerHTML = '<div class="hint">已开启新会话（旧会话消息仍在 MySQL，切回 ID 即可恢复记忆）</div>';
+  });
 
   // 加载 Agent 列表（GET /api/agents，由 AgentConfig 装配的注册表提供）
   async function loadAgents() {
@@ -206,7 +234,7 @@
       for (const a of agents) {
         const opt = document.createElement('option');
         opt.value = a.name;
-        opt.textContent = a.name + ' — ' + a.description;
+        opt.textContent = a.name + ' [' + a.loop + '] — ' + a.description;
         selectEl.appendChild(opt);
       }
     } catch (e) {
@@ -267,9 +295,11 @@
     const view = addAgentMessage(selectEl.value);
 
     try {
-      // POST + 流式读取：EventSource 只支持 GET，SSE 流用 fetch ReadableStream 解析
+      // POST + 流式读取：EventSource 只支持 GET，SSE 流用 fetch ReadableStream 解析。
+      // conversationId 随请求上送，后端据此加载/回写会话记忆
       const resp = await fetch('/api/agents/' + encodeURIComponent(selectEl.value) +
-        '/chat?message=' + encodeURIComponent(text), { method: 'POST' });
+        '/chat?message=' + encodeURIComponent(text) +
+        '&conversationId=' + encodeURIComponent(conversationId), { method: 'POST' });
       if (!resp.ok) {
         view.bubble.className = 'bubble err';
         view.bubble.textContent = resp.status === 429

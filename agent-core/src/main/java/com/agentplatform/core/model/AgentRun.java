@@ -24,6 +24,8 @@ public class AgentRun {
     private volatile String finalAnswer;
     private volatile String error;
     private volatile Instant finishedAt;
+    // 所属会话：为空表示一次性运行（无记忆）；非空时 Loop 据此加载/回写会话记忆
+    private volatile String conversationId;
 
     public AgentRun(String agentName, String input) {
         this.id = UUID.randomUUID().toString();
@@ -86,6 +88,10 @@ public class AgentRun {
         this.error = message;
     }
 
+    public void setConversationId(String conversationId) {
+        this.conversationId = conversationId;
+    }
+
     private static boolean isTerminal(RunState s) {
         return s == RunState.COMPLETED || s == RunState.FAILED || s == RunState.CANCELLED;
     }
@@ -98,5 +104,6 @@ public class AgentRun {
     public String getError() { return error; }
     public Instant getStartedAt() { return startedAt; }
     public Instant getFinishedAt() { return finishedAt; }
+    public String getConversationId() { return conversationId; }
     public List<AgentEvent> getEvents() { return events; }
 }

@@ -50,12 +50,14 @@ public class AgentController {
     public List<AgentInfo> list() {
         return agents.values().stream()
                 .map(a -> new AgentInfo(a.getName(), a.getDescription(),
-                        a.getTools().stream().map(t -> t.name()).toList(), a.getMaxSteps()))
+                        a.getTools().stream().map(t -> t.name()).toList(),
+                        a.getLoopStrategy().name(), a.getMaxSteps()))
                 .toList();
     }
 
     @PostMapping(value = "/agents/{name}/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@PathVariable String name, @RequestParam String message) {
+    public SseEmitter chat(@PathVariable String name, @RequestParam String message,
+                           @RequestParam(required = false) String conversationId) {
         AgentDefinition definition = agents.get(name);
         if (definition == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Agent 不存在: " + name);
@@ -71,8 +73,10 @@ public class AgentController {
         SseEmitter emitter = new SseEmitter(120_000L);
 
         // 并发策略由 Runtime 的虚拟线程执行器统一管理（runAsync），
-        // Controller 只声明意图、消费事件，不再自己管理线程
-        runtime.runAsync(definition, message, event -> {
+        // Controller 只声明意图、消费事件，不再自己管理线程。
+        // conversationId 为空串时归一为 null：空会话 id 写进记忆表会产生无主脏数据
+        String convId = conversationId == null || conversationId.isBlank() ? null : conversationId;
+        runtime.runAsync(definition, message, convId, event -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name(event.type().name())
@@ -113,7 +117,7 @@ public class AgentController {
                 run.getStartedAt(), run.getFinishedAt(), events);
     }
 
-    public record AgentInfo(String name, String description, List<String> tools, int maxSteps) {
+    public record AgentInfo(String name, String description, List<String> tools, String loop, int maxSteps) {
     }
 
     public record RunSummary(String id, String agentName, String input, String state,
