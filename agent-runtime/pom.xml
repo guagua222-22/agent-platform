@@ -50,6 +50,18 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+        <!--
+            RocketMQ 5.x gRPC 客户端（M3-B 任务队列）。
+            为什么用 5.x 原生 client 而不是 rocketmq-spring-boot-starter：
+            starter 停留在 4.x 客户端且对 Spring Boot 3 的兼容维护迟缓，
+            5.x client-java 是官方主推（gRPC 协议、轻依赖），
+            且我们的队列抽象只有 enqueue/start 两个方法，自己接线比迁就 starter 更干净。
+        -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client-java</artifactId>
+            <version>5.0.7</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

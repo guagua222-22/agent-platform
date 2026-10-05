@@ -86,6 +86,9 @@
     cursor: pointer; transition: opacity .15s;
   }
   footer button:disabled { opacity: .45; cursor: not-allowed; }
+  #send-async { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  #send-async:hover { border-color: var(--accent); color: var(--accent); }
+  .trace .tag.TASK_STATE { color: #f0c05a; }
   .hint { text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px; }
   .spinner {
     display: inline-block; width: 12px; height: 12px;
@@ -159,6 +162,8 @@
 <footer>
   <input id="input" placeholder="例如：23*47 等于多少" autocomplete="off">
   <button id="send">发送</button>
+  <button id="send-async" title="走 RocketMQ 任务队列：提交即返回，后台异步执行，轮询结果">
+    异步提交</button>
 </footer>
 
 <!-- 知识库面板：上传文档 → 入库（切分+向量化+Milvus）→ 检索验证 -->
@@ -345,6 +350,79 @@
 
   sendBtn.addEventListener('click', send);
   inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+
+  // ===== 异步任务通道（M3-B：RocketMQ 队列） =====
+  // 与同步 SSE 通道的分工：SSE 看过程，队列要结果。
+  // 提交 → 202 拿 taskId → 每 2s 轮询 /api/tasks/{id} 直到终态（COMPLETED/FAILED）
+  const asyncBtn = document.getElementById('send-async');
+
+  async function sendAsync() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    inputEl.value = '';
+    asyncBtn.disabled = true;
+    sendBtn.disabled = true;
+    addUserMessage(text);
+    const view = addAgentMessage(selectEl.value + ' [异步]');
+
+    try {
+      const resp = await fetch('/api/tasks?agent=' + encodeURIComponent(selectEl.value) +
+        '&message=' + encodeURIComponent(text) +
+        '&conversationId=' + encodeURIComponent(conversationId), { method: 'POST' });
+      if (!resp.ok) {
+        view.bubble.className = 'bubble err';
+        view.bubble.textContent = resp.status === 429
+          ? 'HTTP 429：请求过于频繁（限流生效），稍等片刻再试'
+          : 'HTTP ' + resp.status + '（任务提交失败，RocketMQ 容器是否已启动？）';
+        return;
+      }
+      const submitted = await resp.json();
+      addTraceStep(view.trace, 'TASK_STATE', 'QUEUED · taskId=' + submitted.taskId.slice(0, 8) + '…');
+      view.bubble.textContent = '已入队，后台执行中…';
+
+      // 轮询终态：演示环境 2s 间隔足够；生产可用指数退避或 WebSocket 推送替代
+      let lastState = 'QUEUED';
+      const poll = setInterval(async () => {
+        try {
+          const s = await (await fetch('/api/tasks/' + submitted.taskId)).json();
+          if (s.state !== lastState) {
+            lastState = s.state;
+            addTraceStep(view.trace, 'TASK_STATE', s.state);
+          }
+          if (s.state === 'COMPLETED' || s.state === 'FAILED') {
+            clearInterval(poll);
+            if (s.state === 'COMPLETED') {
+              view.bubble.textContent = s.finalAnswer || '(空回答)';
+            } else {
+              view.bubble.className = 'bubble err';
+              view.bubble.textContent = '运行失败：' + (s.error || '未知错误');
+            }
+            asyncBtn.disabled = false;
+            sendBtn.disabled = false;
+          }
+        } catch (e) {
+          // 单次轮询失败不停表：网络抖动不应终止整个任务视图
+        }
+      }, 2000);
+      // 5 分钟兜底超时：防止任务卡死导致前端无限轮询
+      setTimeout(() => {
+        clearInterval(poll);
+        if (view.bubble.textContent.includes('后台执行中')) {
+          view.bubble.className = 'bubble err';
+          view.bubble.textContent = '轮询超时（5 分钟）：任务可能仍在执行，可用 taskId 手动查询';
+          asyncBtn.disabled = false;
+          sendBtn.disabled = false;
+        }
+      }, 5 * 60 * 1000);
+    } catch (e) {
+      view.bubble.className = 'bubble err';
+      view.bubble.textContent = '请求失败：' + e.message;
+      asyncBtn.disabled = false;
+      sendBtn.disabled = false;
+    }
+  }
+
+  asyncBtn.addEventListener('click', sendAsync);
   loadAgents();
 
   // ===== 知识库面板 =====

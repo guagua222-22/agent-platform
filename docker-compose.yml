@@ -71,8 +71,35 @@ services:
     environment:
       MILVUS_URL: milvus:19530
 
+  # RocketMQ 5（M3-B 任务队列）：NameServer 注册中心 + Broker（Proxy 模式）。
+  # 为什么 broker 要 --enable-proxy：5.x gRPC 客户端只认 Proxy 地址，
+  # 无需感知 Broker 拓扑，本地单机与生产集群同一套连接代码；
+  # 为什么 brokerIP1=127.0.0.1：Broker 向 NameServer 注册的地址会被客户端拿到并直连，
+  # 注册容器内 IP 的话宿主机上的应用根本够不到——注册回环地址配合端口映射才能通。
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.2
+    container_name: agent-rocketmq-namesrv
+    ports:
+      - "9876:9876"
+    command: sh mqnamesrv
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.2
+    container_name: agent-rocketmq-broker
+    depends_on:
+      - rocketmq-namesrv
+    ports:
+      # 10911 remoting + Proxy gRPC（客户端连接口）；10909 备用
+      - "10911:10911"
+      - "10909:10909"
+    volumes:
+      - ./docker/rocketmq/broker.conf:/home/rocketmq/broker.conf
+      - rocketmq-data:/home/rocketmq/store
+    command: sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/broker.conf --enable-proxy
+
 volumes:
   mysql-data:
   redis-data:
   etcd-data:
   milvus-data:
+  rocketmq-data:

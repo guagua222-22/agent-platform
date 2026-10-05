@@ -30,10 +30,16 @@ public class AgentRun {
     private volatile String parentRunId;
 
     public AgentRun(String agentName, String input) {
-        this.id = UUID.randomUUID().toString();
-        this.agentName = agentName;
-        this.input = input;
-        this.startedAt = Instant.now();
+        this(UUID.randomUUID().toString(), agentName, input);
+    }
+
+    /**
+     * 显式指定运行 ID（任务队列场景，M3-B）：
+     * 生产者预生成 runId 入队并落库，消费者用同一 id 启动运行——
+     * 任务提交即刻可查询状态，任务 id 就是运行 id，不需要额外的映射表
+     */
+    public AgentRun(String id, String agentName, String input) {
+        this(id, agentName, input, Instant.now());
     }
 
     /**

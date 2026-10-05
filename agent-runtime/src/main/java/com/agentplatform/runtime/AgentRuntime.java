@@ -104,6 +104,23 @@ public class AgentRuntime {
 
     private AgentRun runInternal(AgentDefinition definition, String input, String conversationId,
                                  String parentRunId, AgentEventSink externalSink) {
+        AgentRun run = new AgentRun(definition.getName(), input);
+        run.setConversationId(conversationId);
+        run.setParentRunId(parentRunId);
+        return executePrepared(definition, run, externalSink);
+    }
+
+    /**
+     * 用调用方预创建的 AgentRun 执行（任务队列场景，M3-B）：
+     * 生产者预生成 runId 入队并落库，消费者用同一运行对象启动——
+     * 任务 id 即运行 id，提交即刻可查询状态，无需任务/运行映射表。
+     * conversationId / parentRunId 由调用方在 run 上预先设置。
+     */
+    public AgentRun run(AgentDefinition definition, AgentRun run, AgentEventSink externalSink) {
+        return executePrepared(definition, run, externalSink);
+    }
+
+    private AgentRun executePrepared(AgentDefinition definition, AgentRun run, AgentEventSink externalSink) {
         Objects.requireNonNull(definition, "definition 不能为空");
         Objects.requireNonNull(definition.getLoopStrategy(), "Agent 未指定 Loop 策略: " + definition.getName());
         AgentEventSink sink = externalSink == null ? event -> { } : externalSink;
@@ -112,9 +129,6 @@ public class AgentRuntime {
         RunContext parent = RunContext.current();
         int depth = parent == null ? 0 : parent.depth() + 1;
 
-        AgentRun run = new AgentRun(definition.getName(), input);
-        run.setConversationId(conversationId);
-        run.setParentRunId(parentRunId);
         // 复合 sink：事件先存档进 run（内存真相），再旁路落库，最后转发给外部。
         // 存档是 Runtime 的底线职责，外部 sink 抛异常不允许中断运行
         AgentEventSink composite = event -> {
@@ -128,7 +142,7 @@ public class AgentRuntime {
         };
 
         composite.emit(AgentEvent.of(AgentEvent.EventType.RUN_STARTED,
-                "agent=" + definition.getName() + " input=" + Strings.abbreviate(input)));
+                "agent=" + definition.getName() + " input=" + Strings.abbreviate(run.getInput())));
         run.transitionTo(RunState.RUNNING);
         persistRun(run); // RUNNING 即落库：崩溃后至少留有"运行过"的痕迹
         // 运行上下文绑定到当前线程：SubAgentTool 据此拿到父运行与父事件出口。

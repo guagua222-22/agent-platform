@@ -70,3 +70,11 @@ logging:
     # 生产环境需降级并注意 body 可能含敏感数据）
     org.springframework.ai.openai: DEBUG
     org.springframework.web.client.RestClient: DEBUG
+
+agent:
+  taskqueue:
+    # RocketMQ 5.x Proxy gRPC 端口（docker-compose 的 rocketmq-broker 带 --enable-proxy）
+    endpoints: localhost:10911
+    topic: agent-tasks
+    # 消费组：多实例部署时同组内负载均衡，任务天然分摊
+    consumer-group: agent-platform-workers
