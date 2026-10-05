@@ -5,7 +5,7 @@ import com.agentplatform.core.agent.MaxStepsExceededException;
 import com.agentplatform.core.model.AgentEvent;
 import com.agentplatform.core.model.AgentRun;
 import com.agentplatform.core.tool.Tool;
-import com.agentplatform.harness.support.MockToolCallingChatModel;
+import com.agentplatform.harness.eval.MockChatModel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ReActLoopTest {
 
-    private MockToolCallingChatModel model;
+    private MockChatModel model;
     private ReActLoop loop;
 
     /** 参数对象：与 agent-app 的 CalcArgs 同构，保证测试覆盖"JSON -> 对象"反序列化路径 */
@@ -55,7 +55,7 @@ class ReActLoopTest {
 
     @BeforeEach
     void setUp() {
-        model = new MockToolCallingChatModel();
+        model = new MockChatModel();
         loop = new ReActLoop(model);
     }
 

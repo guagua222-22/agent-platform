@@ -4,7 +4,7 @@ import com.agentplatform.core.agent.AgentDefinition;
 import com.agentplatform.core.model.AgentEvent;
 import com.agentplatform.core.model.AgentRun;
 import com.agentplatform.core.tool.Tool;
-import com.agentplatform.harness.support.MockToolCallingChatModel;
+import com.agentplatform.harness.eval.MockChatModel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanExecuteLoopTest {
 
-    private MockToolCallingChatModel model;
+    private MockChatModel model;
     private PlanExecuteLoop loop;
 
     private record CalcArgs(String expression) {
@@ -42,7 +42,7 @@ class PlanExecuteLoopTest {
 
     @BeforeEach
     void setUp() {
-        model = new MockToolCallingChatModel();
+        model = new MockChatModel();
         loop = new PlanExecuteLoop(model);
     }
 

@@ -112,8 +112,44 @@ public class TestCase {
             public AssertionResult evaluate(AgentRun run) {
                 boolean ok = run.getEvents().stream().anyMatch(
                         e -> e.type() == com.agentplatform.core.model.AgentEvent.EventType.TOOL_CALLED
-                                && e.detail().startsWith(toolName + "("));
+                                && e.detail().contains(toolName + "("));
                 return new AssertionResult(describe(), ok, ok ? "事件流中存在 TOOL_CALLED" : "事件流中未找到该工具调用");
+            }
+        };
+    }
+
+    /** 便捷方法：断言某工具全程未被调用（反向路由断言：闲聊不该碰工具） */
+    public static Assertion toolNotCalled(String toolName) {
+        return new Assertion() {
+            @Override
+            public String describe() {
+                return "工具 " + toolName + " 未被调用";
+            }
+
+            @Override
+            public AssertionResult evaluate(AgentRun run) {
+                boolean called = run.getEvents().stream().anyMatch(
+                        e -> e.type() == com.agentplatform.core.model.AgentEvent.EventType.TOOL_CALLED
+                                && e.detail().contains(toolName + "("));
+                // 误调工具比漏调更难发现：模型"勤劳过度"直接拉高成本且答案可能来自幻觉
+                return new AssertionResult(describe(), !called,
+                        called ? "事件流中出现了不该有的调用" : "事件流中无该工具调用");
+            }
+        };
+    }
+
+    /** 便捷方法：断言事件流中出现过某类事件（如 PLAN_GENERATED 证明走了规划阶段） */
+    public static Assertion eventEmitted(com.agentplatform.core.model.AgentEvent.EventType type) {
+        return new Assertion() {
+            @Override
+            public String describe() {
+                return "事件流包含 " + type;
+            }
+
+            @Override
+            public AssertionResult evaluate(AgentRun run) {
+                boolean ok = run.getEvents().stream().anyMatch(e -> e.type() == type);
+                return new AssertionResult(describe(), ok, ok ? "已出现" : "未出现");
             }
         };
     }

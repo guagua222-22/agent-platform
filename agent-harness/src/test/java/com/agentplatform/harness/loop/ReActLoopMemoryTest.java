@@ -5,7 +5,7 @@ import com.agentplatform.core.model.AgentEvent;
 import com.agentplatform.core.model.AgentRun;
 import com.agentplatform.harness.memory.ConversationMemory;
 import com.agentplatform.harness.memory.ConversationMemory.MemoryMessage;
-import com.agentplatform.harness.support.MockToolCallingChatModel;
+import com.agentplatform.harness.eval.MockChatModel;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -61,7 +61,7 @@ class ReActLoopMemoryTest {
                 new MemoryMessage("system", "【历史对话摘要】用户叫小王"),
                 new MemoryMessage("user", "我叫小王"),
                 new MemoryMessage("assistant", "好的小王")));
-        MockToolCallingChatModel model = new MockToolCallingChatModel();
+        MockChatModel model = new MockChatModel();
         ReActLoop loop = new ReActLoop(model, null, memory);
         model.scriptAnswer("你叫小王");
 
@@ -93,7 +93,7 @@ class ReActLoopMemoryTest {
     @Test
     void noConversationIdSkipsMemory() {
         StubMemory memory = new StubMemory(List.of(new MemoryMessage("user", "不该被注入")));
-        MockToolCallingChatModel model = new MockToolCallingChatModel();
+        MockChatModel model = new MockChatModel();
         ReActLoop loop = new ReActLoop(model, null, memory);
         model.scriptAnswer("你好");
 
@@ -107,7 +107,7 @@ class ReActLoopMemoryTest {
     /** 记忆为 null（未配置）：行为与 M1 完全一致，记忆是可选增强 */
     @Test
     void nullMemoryKeepsOriginalBehavior() {
-        MockToolCallingChatModel model = new MockToolCallingChatModel();
+        MockChatModel model = new MockChatModel();
         ReActLoop loop = new ReActLoop(model);
         model.scriptAnswer("你好");
 

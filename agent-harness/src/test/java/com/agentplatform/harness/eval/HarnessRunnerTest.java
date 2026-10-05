@@ -3,7 +3,7 @@ package com.agentplatform.harness.eval;
 import com.agentplatform.core.agent.AgentDefinition;
 import com.agentplatform.core.tool.Tool;
 import com.agentplatform.harness.loop.ReActLoop;
-import com.agentplatform.harness.support.MockToolCallingChatModel;
+import com.agentplatform.harness.eval.MockChatModel;
 import com.agentplatform.runtime.AgentRuntime;
 import org.junit.jupiter.api.Test;
 
@@ -46,7 +46,7 @@ class HarnessRunnerTest {
 
     @Test
     void fullPassSuite() {
-        MockToolCallingChatModel model = new MockToolCallingChatModel();
+        MockChatModel model = new MockChatModel();
         AgentDefinition agent = AgentDefinition.builder()
                 .name("calculator")
                 .systemPrompt("你是计算助手")
@@ -85,7 +85,7 @@ class HarnessRunnerTest {
 
     @Test
     void failingAssertionMarksCaseFailed() {
-        MockToolCallingChatModel model = new MockToolCallingChatModel();
+        MockChatModel model = new MockChatModel();
         AgentDefinition agent = AgentDefinition.builder()
                 .name("calculator")
                 .loopStrategy(new ReActLoop(model))

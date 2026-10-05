@@ -1,4 +1,4 @@
-package com.agentplatform.harness.support;
+package com.agentplatform.harness.eval;
 
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -20,19 +20,19 @@ import java.util.List;
  * mock 模型把变量收敛到"我们自己的代码逻辑"，一次 5 分钟跑完；
  * 真模型的集成测试只在发布前全量跑（@Tag("integration")）。
  */
-public class MockToolCallingChatModel implements ChatModel {
+public class MockChatModel implements ChatModel {
 
     private final Deque<ChatResponse> scripted = new ArrayDeque<>();
     private final List<Prompt> calls = new ArrayList<>();
 
     /** 预置一次模型响应：按加入顺序依次返回 */
-    public MockToolCallingChatModel script(ChatResponse response) {
+    public MockChatModel script(ChatResponse response) {
         scripted.add(response);
         return this;
     }
 
     /** 预置一轮"模型要调用工具"的响应 */
-    public MockToolCallingChatModel scriptToolCall(String toolName, String arguments) {
+    public MockChatModel scriptToolCall(String toolName, String arguments) {
         AssistantMessage.ToolCall call = new AssistantMessage.ToolCall("call_1", "function", toolName, arguments);
         AssistantMessage message = AssistantMessage.builder()
                 .content("")
@@ -42,7 +42,7 @@ public class MockToolCallingChatModel implements ChatModel {
     }
 
     /** 预置一轮"模型给出最终回答"的响应 */
-    public MockToolCallingChatModel scriptAnswer(String text) {
+    public MockChatModel scriptAnswer(String text) {
         return script(new ChatResponse(List.of(new Generation(new AssistantMessage(text)))));
     }
 

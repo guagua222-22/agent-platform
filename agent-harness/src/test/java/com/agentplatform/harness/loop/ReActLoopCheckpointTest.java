@@ -3,7 +3,7 @@ package com.agentplatform.harness.loop;
 import com.agentplatform.core.agent.AgentDefinition;
 import com.agentplatform.core.model.AgentRun;
 import com.agentplatform.core.tool.Tool;
-import com.agentplatform.harness.support.MockToolCallingChatModel;
+import com.agentplatform.harness.eval.MockChatModel;
 import com.agentplatform.runtime.checkpoint.Checkpoint;
 import com.agentplatform.runtime.checkpoint.CheckpointStore;
 import org.junit.jupiter.api.Test;
@@ -69,7 +69,7 @@ class ReActLoopCheckpointTest {
 
     @Test
     void checkpointSavedAfterEachCompletedStep() {
-        MockToolCallingChatModel model = new MockToolCallingChatModel();
+        MockChatModel model = new MockChatModel();
         // 剧本只给第 1 轮：第 2 轮模型调用时脚本耗尽抛异常，模拟运行中断
         model.scriptToolCall("calculator", "{\"expression\":\"23*47\"}");
 
@@ -94,7 +94,7 @@ class ReActLoopCheckpointTest {
     @Test
     void resumeContinuesFromCheckpointWithoutReplay() {
         // 第一步：跑一轮工具调用，制造中断现场与 checkpoint
-        MockToolCallingChatModel firstModel = new MockToolCallingChatModel();
+        MockChatModel firstModel = new MockChatModel();
         firstModel.scriptToolCall("calculator", "{\"expression\":\"23*47\"}");
 
         MemoryCheckpointStore store = new MemoryCheckpointStore();
@@ -111,7 +111,7 @@ class ReActLoopCheckpointTest {
         Checkpoint cp = store.load(interrupted.getId()).orElseThrow();
 
         // 第二步：恢复——新模型实例只提供"最终回答"剧本
-        MockToolCallingChatModel resumeModel = new MockToolCallingChatModel();
+        MockChatModel resumeModel = new MockChatModel();
         resumeModel.scriptAnswer("23*47 的结果是 1081");
 
         ReActLoop resumeLoop = new ReActLoop(resumeModel, store);
