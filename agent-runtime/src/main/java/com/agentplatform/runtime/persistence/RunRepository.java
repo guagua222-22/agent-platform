@@ -29,4 +29,7 @@ public interface RunRepository {
 
     /** 最近 N 条运行记录（按开始时间倒序） */
     List<AgentRun> findRecent(int limit);
+
+    /** 查某次运行的全部子运行（SubAgent 嵌套，M3：编排树的可视化与审计入口） */
+    List<AgentRun> findByParent(String parentRunId);
 }

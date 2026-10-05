@@ -53,6 +53,13 @@ class AgentRuntimePersistenceTest {
         public List<AgentRun> findRecent(int limit) {
             return runs.values().stream().toList();
         }
+
+        @Override
+        public List<AgentRun> findByParent(String parentRunId) {
+            return runs.values().stream()
+                    .filter(r -> parentRunId.equals(r.getParentRunId()))
+                    .toList();
+        }
     }
 
     private static final LoopStrategy OK_LOOP = new LoopStrategy() {
@@ -111,6 +118,11 @@ class AgentRuntimePersistenceTest {
 
             @Override
             public List<AgentRun> findRecent(int limit) {
+                return List.of();
+            }
+
+            @Override
+            public List<AgentRun> findByParent(String parentRunId) {
                 return List.of();
             }
         };

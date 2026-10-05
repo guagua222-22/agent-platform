@@ -78,12 +78,43 @@ public class AgentRuntime {
     }
 
     public AgentRun run(AgentDefinition definition, String input, String conversationId, AgentEventSink externalSink) {
+        return runInternal(definition, input, conversationId, null, externalSink);
+    }
+
+    /**
+     * 嵌套运行（SubAgent 委托专用，M3）：在当前运行内同步执行子 Agent。
+     *
+     * 为什么是同步而不是另起线程异步：
+     * 1. 委托语义本就是"等子 Agent 出结果再继续"（agent-as-tool 的工具调用语义）；
+     * 2. 同步执行与父运行同一虚拟线程，RunContext（ThreadLocal）天然传播，
+     *    跨线程传播则需要显式上下文拷贝，复杂度换来的只是假象并发；
+     * 3. 父运行本身已在虚拟线程里，阻塞等待子运行的成本约等于零。
+     * 子事件加 "[sub:<agent>]" 前缀转发进父事件流——父运行的 SSE 能看到完整嵌套思考过程，
+     * 子运行自己也有独立完整的事件存档（双层留痕：父看全局，子可独立审计）。
+     */
+    public AgentRun runChild(AgentDefinition definition, String input) {
+        RunContext parent = RunContext.current();
+        if (parent == null) {
+            throw new IllegalStateException("runChild 必须在某次运行内调用（SubAgentTool 之外禁止使用）");
+        }
+        AgentEventSink forwarding = event -> parent.sink().emit(AgentEvent.of(event.type(),
+                "[sub:" + definition.getName() + "] " + event.detail()));
+        return runInternal(definition, input, null, parent.run().getId(), forwarding);
+    }
+
+    private AgentRun runInternal(AgentDefinition definition, String input, String conversationId,
+                                 String parentRunId, AgentEventSink externalSink) {
         Objects.requireNonNull(definition, "definition 不能为空");
         Objects.requireNonNull(definition.getLoopStrategy(), "Agent 未指定 Loop 策略: " + definition.getName());
         AgentEventSink sink = externalSink == null ? event -> { } : externalSink;
 
+        // 嵌套深度在创建新上下文前从当前上下文读出：顶层 = 0，每嵌套一层 +1
+        RunContext parent = RunContext.current();
+        int depth = parent == null ? 0 : parent.depth() + 1;
+
         AgentRun run = new AgentRun(definition.getName(), input);
         run.setConversationId(conversationId);
+        run.setParentRunId(parentRunId);
         // 复合 sink：事件先存档进 run（内存真相），再旁路落库，最后转发给外部。
         // 存档是 Runtime 的底线职责，外部 sink 抛异常不允许中断运行
         AgentEventSink composite = event -> {
@@ -100,6 +131,9 @@ public class AgentRuntime {
                 "agent=" + definition.getName() + " input=" + Strings.abbreviate(input)));
         run.transitionTo(RunState.RUNNING);
         persistRun(run); // RUNNING 即落库：崩溃后至少留有"运行过"的痕迹
+        // 运行上下文绑定到当前线程：SubAgentTool 据此拿到父运行与父事件出口。
+        // finally 清理是硬要求——ThreadLocal 残留是最隐蔽的上下文污染源
+        RunContext.set(new RunContext(run, composite, depth));
         try {
             definition.getLoopStrategy().execute(definition, run, composite);
             run.transitionTo(RunState.COMPLETED);
@@ -111,6 +145,7 @@ public class AgentRuntime {
             composite.emit(AgentEvent.of(AgentEvent.EventType.RUN_FAILED, e.toString()));
             log.error("Agent 运行失败 run={} agent={}", run.getId(), definition.getName(), e);
         } finally {
+            RunContext.clear();
             persistRun(run); // 终态回写：最终答案/错误信息/结束时间
         }
         return run;

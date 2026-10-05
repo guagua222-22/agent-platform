@@ -26,6 +26,8 @@ public class AgentRun {
     private volatile Instant finishedAt;
     // 所属会话：为空表示一次性运行（无记忆）；非空时 Loop 据此加载/回写会话记忆
     private volatile String conversationId;
+    // 父运行：非空表示这是一次 SubAgent 嵌套运行（M3），父子关联是 Tracing 树形结构的数据基础
+    private volatile String parentRunId;
 
     public AgentRun(String agentName, String input) {
         this.id = UUID.randomUUID().toString();
@@ -92,6 +94,10 @@ public class AgentRun {
         this.conversationId = conversationId;
     }
 
+    public void setParentRunId(String parentRunId) {
+        this.parentRunId = parentRunId;
+    }
+
     private static boolean isTerminal(RunState s) {
         return s == RunState.COMPLETED || s == RunState.FAILED || s == RunState.CANCELLED;
     }
@@ -105,5 +111,6 @@ public class AgentRun {
     public Instant getStartedAt() { return startedAt; }
     public Instant getFinishedAt() { return finishedAt; }
     public String getConversationId() { return conversationId; }
+    public String getParentRunId() { return parentRunId; }
     public List<AgentEvent> getEvents() { return events; }
 }

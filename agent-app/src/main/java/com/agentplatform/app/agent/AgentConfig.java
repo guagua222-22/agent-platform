@@ -8,6 +8,7 @@ import com.agentplatform.harness.loop.ReActLoop;
 import com.agentplatform.harness.memory.ConversationMemory;
 import com.agentplatform.harness.memory.LayeredConversationMemory;
 import com.agentplatform.harness.skill.SkillRegistry;
+import com.agentplatform.harness.subagent.SubAgentTool;
 import com.agentplatform.harness.tool.ToolRegistry;
 import com.agentplatform.runtime.AgentRuntime;
 import com.agentplatform.runtime.checkpoint.CheckpointStore;
@@ -107,7 +108,8 @@ public class AgentConfig {
 
     @Bean
     public Map<String, AgentDefinition> agents(SkillRegistry skills,
-                                               ReActLoop reactLoop, PlanExecuteLoop planExecuteLoop) {
+                                               ReActLoop reactLoop, PlanExecuteLoop planExecuteLoop,
+                                               AgentRuntime runtime) {
         // 基础人设先行，技能片段由 applySkill 追加在后——人设与技能规则分层共存
         AgentDefinition calculatorAgent = skills.applySkill(AgentDefinition.builder()
                         .name("calculator")
@@ -155,12 +157,30 @@ public class AgentConfig {
         skills.applySkill(plannerBuilder, "math");
         AgentDefinition plannerAgent = skills.applySkill(plannerBuilder, "time").build();
 
+        // 多 Agent 编排者（M3）：专家 Agent 包装成 delegate_to_* 工具，编排者用标准 ReAct 决定路由。
+        // 防自委托是结构性保证而非提示词约束：编排者的工具表只包专家 Agent，不包含自己；
+        // 专家 Agent 的工具表里没有任何 delegate 工具，嵌套深度天然封顶为 1
+        // （RunContext.MAX_DEPTH 是第二道硬防线）。
+        AgentDefinition orchestratorAgent = AgentDefinition.builder()
+                .name("orchestrator")
+                .description("多Agent编排者：拆解复杂任务，委托给专家Agent（计算/知识库），汇总结果")
+                .systemPrompt("你是多 Agent 编排者，不亲自解题。分析用户任务：" +
+                        "需要计算的子任务委托给 calculator，需要文档知识的子任务委托给 knowledge；" +
+                        "委托时任务描述必须完整自包含（子 Agent 看不到本对话）。" +
+                        "收集齐全部子结果后用中文汇总回答。能直接回答的闲聊不要委托。")
+                .tool(new SubAgentTool(calculatorAgent, runtime))
+                .tool(new SubAgentTool(knowledgeAgent, runtime))
+                .loopStrategy(reactLoop)
+                .maxSteps(8)
+                .build();
+
         Map<String, AgentDefinition> agents = new LinkedHashMap<>();
         agents.put(calculatorAgent.getName(), calculatorAgent);
         agents.put(chatAgent.getName(), chatAgent);
         agents.put(assistantAgent.getName(), assistantAgent);
         agents.put(knowledgeAgent.getName(), knowledgeAgent);
         agents.put(plannerAgent.getName(), plannerAgent);
+        agents.put(orchestratorAgent.getName(), orchestratorAgent);
         return agents;
     }
 

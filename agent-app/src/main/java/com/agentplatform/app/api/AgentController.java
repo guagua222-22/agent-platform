@@ -112,9 +112,14 @@ public class AgentController {
         AgentRun run = repository.findRun(runId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "运行记录不存在: " + runId));
         List<AgentEvent> events = repository.findEvents(runId);
-        return new RunDetail(run.getId(), run.getAgentName(), run.getInput(),
+        // 子运行列表：SubAgent 编排树的可视化入口（编排者的每次委托都是一条子运行）
+        List<RunSummary> subRuns = repository.findByParent(runId).stream()
+                .map(r -> new RunSummary(r.getId(), r.getAgentName(), r.getInput(),
+                        r.getState().name(), r.getStartedAt(), r.getFinishedAt()))
+                .toList();
+        return new RunDetail(run.getId(), run.getAgentName(), run.getParentRunId(), run.getInput(),
                 run.getState().name(), run.getFinalAnswer(), run.getError(),
-                run.getStartedAt(), run.getFinishedAt(), events);
+                run.getStartedAt(), run.getFinishedAt(), events, subRuns);
     }
 
     public record AgentInfo(String name, String description, List<String> tools, String loop, int maxSteps) {
@@ -124,9 +129,10 @@ public class AgentController {
                              Instant startedAt, Instant finishedAt) {
     }
 
-    public record RunDetail(String id, String agentName, String input, String state,
+    public record RunDetail(String id, String agentName, String parentRunId, String input, String state,
                             String finalAnswer, String error,
-                            Instant startedAt, Instant finishedAt, List<AgentEvent> events) {
+                            Instant startedAt, Instant finishedAt, List<AgentEvent> events,
+                            List<RunSummary> subRuns) {
     }
 
     private static final class ClientGoneException extends RuntimeException {

@@ -32,15 +32,15 @@ public class JdbcRunRepository implements RunRepository {
         // UPSERT：RUNNING 时插入，终态时更新。id 是 UUID，天然幂等——
         // 同一运行重复落库只会覆盖同一条记录，不会产生脏副本
         jdbc.update("""
-                        INSERT INTO agent_run (id, agent_name, input, state, final_answer, error, started_at, finished_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO agent_run (id, agent_name, parent_run_id, input, state, final_answer, error, started_at, finished_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE
                             state = VALUES(state),
                             final_answer = VALUES(final_answer),
                             error = VALUES(error),
                             finished_at = VALUES(finished_at)
                         """,
-                run.getId(), run.getAgentName(), run.getInput(), run.getState().name(),
+                run.getId(), run.getAgentName(), run.getParentRunId(), run.getInput(), run.getState().name(),
                 run.getFinalAnswer(), run.getError(),
                 Timestamp.from(run.getStartedAt()),
                 run.getFinishedAt() == null ? null : Timestamp.from(run.getFinishedAt()));
@@ -59,7 +59,7 @@ public class JdbcRunRepository implements RunRepository {
     @Override
     public Optional<AgentRun> findRun(String runId) {
         List<AgentRun> runs = jdbc.query("""
-                        SELECT id, agent_name, input, state, final_answer, error, started_at, finished_at
+                        SELECT id, agent_name, parent_run_id, input, state, final_answer, error, started_at, finished_at
                         FROM agent_run WHERE id = ?
                         """, this::mapRun, runId);
         return runs.stream().findFirst();
@@ -81,14 +81,22 @@ public class JdbcRunRepository implements RunRepository {
     @Override
     public List<AgentRun> findRecent(int limit) {
         return jdbc.query("""
-                        SELECT id, agent_name, input, state, final_answer, error, started_at, finished_at
+                        SELECT id, agent_name, parent_run_id, input, state, final_answer, error, started_at, finished_at
                         FROM agent_run ORDER BY started_at DESC LIMIT ?
                         """, this::mapRun, Math.max(1, Math.min(limit, 100)));
     }
 
+    @Override
+    public List<AgentRun> findByParent(String parentRunId) {
+        return jdbc.query("""
+                        SELECT id, agent_name, parent_run_id, input, state, final_answer, error, started_at, finished_at
+                        FROM agent_run WHERE parent_run_id = ? ORDER BY started_at
+                        """, this::mapRun, parentRunId);
+    }
+
     private AgentRun mapRun(ResultSet rs, int rowNum) throws SQLException {
         Timestamp finished = rs.getTimestamp("finished_at");
-        return AgentRun.restore(
+        AgentRun run = AgentRun.restore(
                 rs.getString("id"),
                 rs.getString("agent_name"),
                 rs.getString("input"),
@@ -97,5 +105,7 @@ public class JdbcRunRepository implements RunRepository {
                 rs.getString("error"),
                 rs.getTimestamp("started_at").toInstant(),
                 finished == null ? null : finished.toInstant());
+        run.setParentRunId(rs.getString("parent_run_id"));
+        return run;
     }
 }

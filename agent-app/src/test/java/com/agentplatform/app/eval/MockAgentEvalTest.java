@@ -52,7 +52,7 @@ class MockAgentEvalTest {
         AgentConfig config = new AgentConfig();
         SkillRegistry skills = config.skillRegistry(
                 new CalculatorTool(), new TimeTool(), stubSearchTool(), new ToolRegistry());
-        return config.agents(skills, new ReActLoop(model), new PlanExecuteLoop(model));
+        return config.agents(skills, new ReActLoop(model), new PlanExecuteLoop(model), new AgentRuntime());
     }
 
     @Test
